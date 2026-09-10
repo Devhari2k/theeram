@@ -1,0 +1,15 @@
+{
+  "name": "theeram-rules",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Firestore security rules and their emulator test suite for Theeram.",
+  "scripts": {
+    "test:rules": "firebase emulators:exec --only firestore --project demo-theeram \"node --test tests/vuln-demo.test.mjs tests/rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.17.1",
+    "firebase-tools": "^14.5.0"
+  }
+}
