@@ -57,7 +57,16 @@ service cloud.firestore {
       // Anyone signed in can create a family circle; the client creates the
       // family doc and the creator's own admin membership doc together.
       allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
-      allow update, delete: if isFamilyAdmin(familyId);
+
+      // SECURITY (fix 2): createdBy authorizes the founder branch of the
+      // members/{uid} create rule below, so it must never change after
+      // creation. Otherwise an admin could repoint it at any outside account,
+      // and that account could then self-insert as an admin member with no
+      // invite code at all. Splitting update from delete keeps the delete
+      // rule unchanged (deletes carry no request.resource to compare).
+      allow update: if isFamilyAdmin(familyId) &&
+        request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if isFamilyAdmin(familyId);
 
       // ---- Membership ----
       match /members/{memberUid} {
@@ -91,11 +100,36 @@ service cloud.firestore {
            get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.joinedViaCode)).data.used == false)
         );
 
-        // Members can update their own doc (e.g. status); admins can update anyone's (e.g. role).
+        // Members can update their own doc (e.g. status, denormalized profile
+        // fields); admins can update anyone's (e.g. role).
+        //
+        // SECURITY (fix 1): `role` is an AUTHORIZATION field — isFamilyAdmin()
+        // reads it back on every later request — so only an existing admin may
+        // change it. The previous form authorized WHO may write without ever
+        // constraining WHAT they wrote, so a plain member could set
+        // role:'admin' on their own doc in a single write and take over the
+        // family (delete it, evict the founder, edit everyone's locations).
+        // The admin branch is evaluated first precisely so transferOwnership()
+        // still works: an admin promotes the successor, then demotes THEMSELF,
+        // and that self-demotion is a role change on their own document.
+        //
+        // `uid` is frozen for everyone: it is enforced on create but was
+        // previously mutable on update, and the collection-group members rule
+        // below trusts `uid` to equal the document ID. Letting it drift lets
+        // one user inject an unreadable phantom family into another user's
+        // "which families am I in" query.
         allow update: if isFamilyMember(familyId) &&
-          (request.auth.uid == memberUid || isFamilyAdmin(familyId));
+          request.resource.data.uid == resource.data.uid &&
+          (
+            isFamilyAdmin(familyId) ||
+            (request.auth.uid == memberUid &&
+             request.resource.data.role == resource.data.role)
+          );
         // Leaving (self) or being removed by an admin — a plain member cannot remove anyone else.
-        allow delete: if request.auth.uid == memberUid || isFamilyAdmin(familyId);
+        // (fix 4) isSignedIn() is explicit rather than relying on request.auth.uid
+        // erroring out for anonymous callers.
+        allow delete: if isSignedIn() &&
+          (request.auth.uid == memberUid || isFamilyAdmin(familyId));
       }
 
       // ---- Saved locations ----
@@ -105,7 +139,16 @@ service cloud.firestore {
         // admin, for cleanup — can create/change/remove a given location.
         allow read: if isFamilyMember(familyId);
         allow create: if isFamilyMember(familyId) && request.resource.data.ownerUid == request.auth.uid;
-        allow update, delete: if isFamilyMember(familyId) &&
+        // SECURITY (fix 3): ownerUid decides who may edit this document, so it
+        // is frozen on update. The authorization check itself was already
+        // correct (it reads resource.data, i.e. the pre-write owner), but
+        // nothing stopped the writer from handing the document to someone else
+        // in the same write — which also lets a member plant a location that
+        // raises risk alerts attributed to another family member by name.
+        allow update: if isFamilyMember(familyId) &&
+          (resource.data.ownerUid == request.auth.uid || isFamilyAdmin(familyId)) &&
+          request.resource.data.ownerUid == resource.data.ownerUid;
+        allow delete: if isFamilyMember(familyId) &&
           (resource.data.ownerUid == request.auth.uid || isFamilyAdmin(familyId));
       }
 
