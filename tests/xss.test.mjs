@@ -139,8 +139,12 @@ describe('source-level sink guards', () => {
   test('index.html loads escape.js before the inline script', () => {
     const s = read('index.html');
     const helper = s.indexOf('js/escape.js');
-    const inline = s.indexOf('const TERRAIN_ICONS');
+    // Anchored on a UI function that stays in the inline script. The previous
+    // anchor was `const TERRAIN_ICONS`, which moved into js/risk.js in Phase
+    // 2.4.1; the ordering requirement it asserts is unchanged.
+    const inline = s.indexOf('function cardTemplate(');
     assert.ok(helper !== -1, 'escape.js not loaded');
+    assert.ok(inline !== -1, 'inline script anchor not found');
     assert.ok(helper < inline, 'escape.js must load before the inline script');
   });
 

@@ -1032,29 +1032,18 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Must precede the inline script below: defines escapeHtml/safeCssColor. -->
 <script src="js/escape.js"></script>
+<!-- Shared risk engine — the one authoritative implementation, also imported
+     by the scheduled monitor. Module scripts are deferred, so TheeramRisk is
+     populated after the inline script below has finished executing; that is
+     safe because every risk call site sits inside an async handler that runs
+     only after sign-in and a Firestore round-trip, never at load time. -->
+<script type="module">
+  import * as Risk from './js/risk.js';
+  window.TheeramRisk = Risk;
+</script>
 <script>
-const TERRAIN_ICONS = {
-  coastal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 15C3.5 13 5.5 13 7 15C8.5 17 10.5 17 12 15C13.5 13 15.5 13 17 15C18.5 17 20.5 17 22 15" stroke="#3FA7D6" stroke-width="1.8" stroke-linecap="round"/><path d="M2 19C3.5 17 5.5 17 7 19C8.5 21 10.5 21 12 19C13.5 17 15.5 17 17 19C18.5 21 20.5 21 22 19" stroke="#3FA7D6" stroke-width="1.8" stroke-linecap="round" opacity="0.5"/></svg>',
-  floodplain: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="14" width="18" height="7" rx="1" stroke="#3FA7D6" stroke-width="1.6"/><path d="M3 14L9 8L13 11L21 4" stroke="#3FA7D6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  midland: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 19L8 9L12 14L16 7L22 19" stroke="#3FA7D6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  highland: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 19L9 5L13 12L16 8L22 19" stroke="#3FA7D6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 5L11 9H7L9 5Z" fill="#3FA7D6"/></svg>'
-};
-
-function classifyTerrain(elevation){
-  if(elevation == null || isNaN(elevation)) return null;
-  if(elevation < 8){
-    return { type:'Coastal', icon: TERRAIN_ICONS.coastal, desc:'Coastal lowland — tidal and storm-surge exposure compounds with rainfall.' };
-  } else if(elevation < 40){
-    return { type:'Low-lying floodplain', icon: TERRAIN_ICONS.floodplain, desc:'Flat, low terrain — water tends to pool and drain slowly here.' };
-  } else if(elevation < 150){
-    return { type:'Midland', icon: TERRAIN_ICONS.midland, desc:'Gently sloped midland — moderate runoff, lower standing-water risk.' };
-  } else {
-    return { type:'Highland', icon: TERRAIN_ICONS.highland, desc:'Higher elevation — lower flood risk, but watch landslide-prone slopes.' };
-  }
-}
-
 async function fetchElevation(lat, lon){
-  const url = `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`;
+  const url = TheeramRisk.buildElevationUrl(lat, lon);
   const res = await fetch(url);
   if(!res.ok) throw new Error('Elevation data unavailable');
   const data = await res.json();
@@ -1094,10 +1083,10 @@ function initMap(loc){
 // has it cached (written when the place was first added), skip the API call.
 async function getElevationAndTerrain(loc){
   if(loc.elevation != null && loc.terrainType){
-    return { elevation: loc.elevation, terrain: classifyTerrain(loc.elevation) };
+    return { elevation: loc.elevation, terrain: TheeramRisk.classifyTerrain(loc.elevation) };
   }
   const elevation = await fetchElevation(loc.lat, loc.lon);
-  return { elevation, terrain: classifyTerrain(elevation) };
+  return { elevation, terrain: TheeramRisk.classifyTerrain(elevation) };
 }
 
 async function loadTerrain(loc){
@@ -1154,66 +1143,12 @@ async function geocode(query){
 window.theeramGeocode = geocode;
 
 async function fetchRainfall(lat, lon){
-  // past 3 days daily precipitation sum + hourly for the next 2 days, so we
-  // can compute both the trailing 24/48/72h totals AND a forward-looking
-  // next-24h forecast total from the same call.
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&past_days=3&forecast_days=2&timezone=auto`;
-  const res = await fetch(url);
+  // Windowing and aggregation live in js/risk.js so the monitor uses the
+  // identical maths; this wrapper is now only the network call.
+  const res = await fetch(TheeramRisk.buildForecastUrl(lat, lon));
   if(!res.ok) throw new Error('Weather data unavailable');
   const data = await res.json();
-  const hours = data.hourly.precipitation;
-  const times = data.hourly.time;
-  const now = new Date();
-  // "now" is approximated as the last hour at/before the current time.
-  let nowIdx = times.length - 1;
-  for(let i = 0; i < times.length; i++){
-    if(new Date(times[i]) > now){ nowIdx = Math.max(0, i - 1); break; }
-  }
-  function sumLastNHours(n){
-    let sum = 0;
-    for(let i = Math.max(0, nowIdx - n); i <= nowIdx; i++){
-      if(hours[i] != null) sum += hours[i];
-    }
-    return Math.round(sum * 10) / 10;
-  }
-  function sumNextNHours(n){
-    let sum = 0;
-    for(let i = nowIdx + 1; i <= Math.min(hours.length - 1, nowIdx + n); i++){
-      if(hours[i] != null) sum += hours[i];
-    }
-    return Math.round(sum * 10) / 10;
-  }
-  return {
-    r24: sumLastNHours(24),
-    r48: sumLastNHours(48),
-    r72: sumLastNHours(72),
-    forecastNext24h: sumNextNHours(24)
-  };
-}
-
-function computeRisk(rain){
-  // Based on IMD rainfall intensity classification (mm in 24h):
-  // Heavy: 64.5-115.5, Very Heavy: 115.6-204.4, Extremely Heavy: >204.5
-  const { r24, r48, r72 } = rain;
-  let level, pct, color, reason;
-
-  if(r24 >= 204.5 || r48 >= 300){
-    level = 'Severe'; pct = 95; color = 'var(--coral)';
-    reason = `Extremely heavy rainfall detected — ${r24}mm in the last 24h. This crosses IMD's "extremely heavy" threshold.`;
-  } else if(r24 >= 115.6 || r48 >= 180){
-    level = 'High'; pct = 72; color = 'var(--amber)';
-    reason = `Very heavy rainfall — ${r24}mm in 24h, ${r48}mm over 48h. Ground saturation risk is elevated.`;
-  } else if(r24 >= 64.5 || r72 >= 150){
-    level = 'Moderate'; pct = 45; color = 'var(--amber)';
-    reason = `Heavy rainfall recorded — ${r24}mm in the last 24h. Worth monitoring, especially in low-lying or coastal areas.`;
-  } else if(r24 > 20 || r72 > 60){
-    level = 'Low'; pct = 20; color = 'var(--safe)';
-    reason = `Rainfall is light to moderate (${r24}mm/24h). No elevated flood signal right now.`;
-  } else {
-    level = 'Minimal'; pct = 6; color = 'var(--safe)';
-    reason = `Little to no recent rainfall (${r24}mm/24h) recorded for this location.`;
-  }
-  return { level, pct, color, reason };
+  return TheeramRisk.summarizeRainfall(data.hourly);
 }
 
 function cardTemplate(loc){
@@ -1267,7 +1202,7 @@ async function loadCardData(loc){
   if(!body) return;
   try{
     const rain = await fetchRainfall(loc.lat, loc.lon);
-    const risk = computeRisk(rain);
+    const risk = TheeramRisk.computeRisk(rain);
     body.innerHTML = `
       <div class="gauge-row">
         <div class="gauge"><div class="gauge-fill" style="height:${risk.pct}%; background:${risk.color}"></div></div>
@@ -1325,8 +1260,8 @@ async function handleAdd(){
       fetchElevation(geo.lat, geo.lon).catch(()=>null),
       fetchRainfall(geo.lat, geo.lon)
     ]);
-    const terrain = classifyTerrain(elevation);
-    const risk = computeRisk(rain);
+    const terrain = TheeramRisk.classifyTerrain(elevation);
+    const risk = TheeramRisk.computeRisk(rain);
     await window.theeramFamily.addLocation({
       name: geo.name, lat: geo.lat, lon: geo.lon,
       elevation, terrainType: terrain ? terrain.type : null,
@@ -1376,8 +1311,6 @@ const RISK_STALE_MS = 10 * 60 * 1000; // don't re-check a location more than onc
 let riskCheckedFamilyId = null;
 const dismissedAlertKeys = new Set();
 
-function isHighOrExtreme(level){ return level === 'High' || level === 'Severe'; }
-
 async function checkFamilyRiskOnce(detail){
   const { family, members, locations: familyLocations, myUid } = detail;
   if(!family || !familyLocations || !familyLocations.length) return;
@@ -1395,9 +1328,9 @@ async function checkFamilyRiskOnce(detail){
     if(now - lastMs < RISK_STALE_MS) continue;
     try{
       const rain = await fetchRainfall(loc.lat, loc.lon);
-      const risk = computeRisk(rain);
-      const wasHighRisk = loc.risk && isHighOrExtreme(loc.risk.level);
-      if(isHighOrExtreme(risk.level) && !wasHighRisk){
+      const risk = TheeramRisk.computeRisk(rain);
+      const wasHighRisk = loc.risk && TheeramRisk.isHighOrExtreme(loc.risk.level);
+      if(TheeramRisk.isHighOrExtreme(risk.level) && !wasHighRisk){
         crossedIntoHighRisk.push({
           locationId: loc.id,
           placeName: loc.name,
