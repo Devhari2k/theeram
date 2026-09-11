@@ -3,10 +3,14 @@
 Scheduled pass that recomputes flood risk for every saved location and decides
 whether an alert *would* be sent.
 
-**Nothing is delivered to users in this phase.** There is no FCM, no push, no
-scheduler. Alert decisions are logged and written to `alertDecisions` with
+**Nothing is delivered to users in this phase.** There is no FCM and no push.
+Alert decisions are logged and written to `alertDecisions` with
 `delivered: false`. Wiring delivery is a later phase; the detection logic here
 does not change when it lands.
+
+Scheduling is set up in `.github/workflows/monitor.yml` (hourly, authenticated
+by Workload Identity Federation — no stored key). It is inert until that
+workflow reaches the default branch: see [SCHEDULER.md](SCHEDULER.md).
 
 > The risk model is a **rainfall-and-elevation proxy**, not a hydrological
 > flood forecast. It has no river stage, reservoir level, soil moisture,
@@ -109,7 +113,8 @@ public repo are publicly readable.
 ## Not yet done
 
 - No FCM / push delivery
-- No scheduler
+- The scheduler exists but is inert until `monitor.yml` is on the default
+  branch, and until the two GCP secrets are configured (SCHEDULER.md)
 - Client `checkFamilyRiskOnce()` still runs; its cross-member write is removed
   only once the monitor is proven
 - No Firestore rules change (device-token storage needs one; see Phase 2.3 §10)

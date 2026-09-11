@@ -1,0 +1,100 @@
+# Hourly flood-risk monitoring pass.
+#
+# Runs monitor/index.js against the live Firestore project. It computes risk
+# for every saved location, writes changed values back, and RECORDS alert
+# decisions. It does NOT notify anyone — there is no FCM in this phase.
+#
+# Authentication is Workload Identity Federation: GitHub mints a short-lived
+# OIDC token, Google exchanges it for a short-lived access token. No
+# service-account key exists, so there is no long-lived credential in this
+# public repository to leak or rotate.
+#
+# Setup (one time, run by a human with GCP access): monitor/SCHEDULER.md
+#
+# NOTE: `schedule` only fires for workflows on the repository's DEFAULT
+# branch. While this file lives on a feature branch it is inert — nothing
+# runs until it is merged to main. That is deliberate: merging is the switch.
+
+name: Flood monitor
+
+on:
+  schedule:
+    # :17 rather than :00 — GitHub delays or drops scheduled jobs at peak
+    # times, and the top of the hour is the worst of them. The risk model
+    # integrates rainfall over 24h windows, so the offset costs nothing.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Read and report only — write nothing'
+        type: boolean
+        default: true
+
+# Least privilege. id-token is what WIF needs; contents:read is for checkout.
+# Fork pull requests never receive id-token, so this cannot be borrowed by a
+# PR from outside the repository.
+permissions:
+  contents: read
+  id-token: write
+
+# The monitor is safe to overlap (per-location transactions, deterministic
+# decision ids), but not overlapping is cheaper than proving it every hour.
+concurrency:
+  group: flood-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Hourly pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check required configuration
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          missing=0
+          [ -z "$WIF_PROVIDER" ]    && echo "::error::GCP_WIF_PROVIDER is not set"    && missing=1
+          [ -z "$SERVICE_ACCOUNT" ] && echo "::error::GCP_SERVICE_ACCOUNT is not set" && missing=1
+          if [ "$missing" = "1" ]; then
+            echo "See monitor/SCHEDULER.md for the one-time setup."
+            exit 1
+          fi
+
+      # Actions are pinned to major tags. Pinning to a full commit SHA is the
+      # hardened option for a public repository holding id-token:write — see
+      # the note in monitor/SCHEDULER.md.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Production dependencies only: firebase-admin is all the monitor needs.
+      # The emulator, rules-testing and Capacitor CLI toolchains stay out of
+      # the runner entirely.
+      - name: Install
+        run: npm ci --omit=dev
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: theeram-18e35
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          # Writes an external_account credential file and exports
+          # GOOGLE_APPLICATION_CREDENTIALS, which monitor/admin.js already
+          # consumes via firebase-admin's applicationDefault().
+          create_credentials_file: true
+
+      - name: Run monitor
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "Manual DRY RUN — reading production, writing nothing."
+            node monitor/index.js --production --dry-run
+          else
+            node monitor/index.js --production
+          fi
