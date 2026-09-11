@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Theeram</string>
+    <string name="title_activity_main">Theeram</string>
+    <string name="package_name">com.theeram.app</string>
+    <string name="custom_url_scheme">com.theeram.app</string>
+</resources>
