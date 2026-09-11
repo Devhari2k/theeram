@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Theeram — Flood Watch</title>
+<meta name="description" content="Personal flood risk monitoring for saved locations in coastal India.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0B2027">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --bg:#0B2027;
+    --bg-elevated:#102C35;
+    --card-border:#1E434F;
+    --cyan:#3FA7D6;
+    --cyan-dim:#2E7A9E;
+    --amber:#F4A261;
+    --coral:#E76F51;
+    --safe:#5FB98A;
+    --text:#EAF4F4;
+    --text-dim:#9FC2C4;
+    --text-faint:#6B8C8E;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(63,167,214,0.15), transparent),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+    padding-bottom:40px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap{max-width:560px; margin:0 auto; padding:0 20px;}
+
+  .water-bg{
+    position:fixed;
+    inset:0;
+    z-index:0;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .wave-layer{
+    position:absolute;
+    left:0; bottom:0;
+    width:200vw;
+    fill:var(--cyan);
+    will-change:transform;
+  }
+  .wave-back{ height:34vh; opacity:0.05; animation:wave-scroll 46s linear infinite; }
+  .wave-mid{ height:50vh; opacity:0.08; animation:wave-scroll 32s linear infinite reverse; }
+  .wave-front{ height:70vh; opacity:0.12; animation:wave-scroll 22s linear infinite; }
+  @keyframes wave-scroll{
+    from{ transform:translateX(0); }
+    to{ transform:translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .wave-layer{ animation:none; }
+  }
+
+  body > *:not(.water-bg){ position:relative; z-index:1; }
+
+  header{padding:32px 20px 20px;}
+  header .wrap{display:flex; flex-direction:column; gap:4px;}
+  .brand{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:28px;
+    letter-spacing:-0.02em;
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  .brand .malayalam{color:var(--cyan); font-size:16px; font-weight:500;}
+  .tagline{color:var(--text-dim); font-size:14px; margin-top:2px;}
+
+  .risk-alert-banner{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    background:rgba(231,111,81,0.1);
+    border:1px solid rgba(231,111,81,0.35);
+    border-radius:10px;
+    padding:14px;
+    margin:16px 20px 4px;
+    animation:alert-in 0.3s cubic-bezier(0.22,1,0.36,1);
+  }
+  @keyframes alert-in{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:none;} }
+  .risk-alert-item{ display:flex; align-items:flex-start; gap:10px; }
+  .risk-alert-text{ font-size:13px; line-height:1.5; color:var(--text); flex:1; }
+  .risk-alert-text b{ color:#FFC0A8; }
+  .risk-alert-dismiss{
+    background:none; border:none; color:var(--text-faint);
+    font-size:12px; cursor:pointer; align-self:flex-end;
+    padding:2px 6px;
+  }
+  .risk-alert-dismiss:hover{ color:var(--text); }
+
+  .disclaimer{
+    background:rgba(244,162,97,0.08);
+    border:1px solid rgba(244,162,97,0.25);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:12.5px;
+    line-height:1.5;
+    color:var(--amber);
+    margin:16px 20px 4px;
+  }
+  .disclaimer b{color:#FFC98E;}
+
+  main{padding-top:12px;}
+
+  .add-section{padding:20px;}
+  .add-form{
+    display:flex;
+    gap:8px;
+  }
+  input[type=text]{
+    flex:1;
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:13px 14px;
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    outline:none;
+    transition:border-color 0.15s ease;
+  }
+  input[type=text]:focus{border-color:var(--cyan);}
+  input[type=text]::placeholder{color:var(--text-faint);}
+  button.add-btn{
+    background:var(--cyan);
+    color:#052027;
+    border:none;
+    border-radius:10px;
+    padding:0 20px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:15px;
+    cursor:pointer;
+    transition:background 0.15s ease, transform 0.1s ease;
+  }
+  button.add-btn:active{transform:scale(0.97);}
+  button.add-btn:disabled{background:var(--cyan-dim); cursor:wait;}
+  button.add-btn:hover:not(:disabled){background:#57B7E0;}
+
+  .form-status{font-size:13px; color:var(--text-dim); margin-top:8px; min-height:18px;}
+  .form-status.error{color:var(--coral);}
+
+  .empty-state{
+    padding:40px 20px;
+    text-align:center;
+    color:var(--text-faint);
+  }
+  .empty-state svg{opacity:0.35; margin-bottom:14px;}
+  .empty-state p{font-size:14px; line-height:1.6; max-width:320px; margin:0 auto;}
+
+  .cards{padding:4px 20px 20px; display:flex; flex-direction:column; gap:14px;}
+
+  .card{
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    overflow:hidden;
+    position:relative;
+  }
+  .card-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    padding:18px 18px 14px;
+  }
+  .loc-name{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:17px;}
+  .loc-meta{font-size:12px; color:var(--text-faint); margin-top:3px;}
+  .remove-btn{
+    background:none; border:none; color:var(--text-faint);
+    font-size:18px; cursor:pointer; padding:4px 8px; line-height:1;
+    border-radius:6px;
+    transition:color 0.15s ease, background 0.15s ease;
+  }
+  .remove-btn:hover{color:var(--coral); background:rgba(231,111,81,0.1);}
+
+  .gauge-row{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    padding:0 18px 16px;
+  }
+  .gauge{
+    width:56px;
+    height:72px;
+    border-radius:10px;
+    border:1.5px solid var(--card-border);
+    position:relative;
+    overflow:hidden;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.02);
+  }
+  .gauge-fill{
+    position:absolute;
+    bottom:0; left:0; right:0;
+    background:linear-gradient(180deg, var(--cyan), var(--cyan-dim));
+    transition:height 0.8s cubic-bezier(0.22,1,0.36,1), background 0.4s ease;
+    height:0%;
+  }
+  .gauge-fill::before{
+    content:'';
+    position:absolute; top:-3px; left:0; right:0; height:6px;
+    background:inherit;
+    opacity:0.5;
+    filter:blur(2px);
+  }
+  .risk-info{flex:1;}
+  .risk-label{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:15px;
+    display:flex;
+    align-items:center;
+    gap:7px;
+  }
+  .risk-dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
+  .risk-reason{font-size:12.5px; color:var(--text-dim); margin-top:5px; line-height:1.5;}
+
+  .map-wrap{
+    position:relative;
+    margin:0 18px 14px;
+    height:170px;
+    border-radius:12px;
+    overflow:hidden;
+    border:1px solid var(--card-border);
+    background:var(--bg-elevated);
+  }
+  .map-wrap::after{
+    content:'';
+    position:absolute; inset:0;
+    pointer-events:none;
+    box-shadow:inset 0 0 44px rgba(0,0,0,0.55);
+    border-radius:12px;
+  }
+  .map-wrap .leaflet-container{
+    background:var(--bg-elevated);
+    font-family:'Inter', sans-serif;
+  }
+  .map-wrap .leaflet-control-zoom a{
+    background:var(--bg-elevated) !important;
+    color:var(--text) !important;
+    border-color:var(--card-border) !important;
+  }
+  .map-wrap .leaflet-control-zoom a:hover{ background:var(--card-border) !important; }
+  .map-wrap .leaflet-bar{ border:1px solid var(--card-border) !important; box-shadow:none !important; }
+  .map-wrap .leaflet-control-attribution{
+    background:rgba(5,20,25,0.6) !important;
+    color:var(--text-faint) !important;
+    font-size:9px !important;
+    padding:1px 6px !important;
+  }
+  .map-wrap .leaflet-control-attribution a{ color:var(--text-dim) !important; }
+
+  .map-pin{ position:relative; width:20px; height:20px; }
+  .map-pin .pin-pulse{
+    position:absolute; top:50%; left:50%;
+    width:12px; height:12px; margin:-6px 0 0 -6px;
+    border-radius:50%;
+    background:var(--cyan);
+    opacity:0.55;
+    animation:pin-pulse 2.2s ease-out infinite;
+  }
+  .map-pin .pin-dot{
+    position:absolute; top:50%; left:50%;
+    width:12px; height:12px; margin:-6px 0 0 -6px;
+    border-radius:50%;
+    background:var(--cyan);
+    border:2px solid #EAF4F4;
+    box-shadow:0 0 10px rgba(63,167,214,0.85);
+  }
+  @keyframes pin-pulse{
+    0%{ transform:scale(1); opacity:0.55; }
+    100%{ transform:scale(3.2); opacity:0; }
+  }
+
+  .terrain-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:2px 18px 16px;
+  }
+  .terrain-icon{
+    width:34px; height:34px;
+    border-radius:9px;
+    background:rgba(63,167,214,0.1);
+    border:1px solid rgba(63,167,214,0.2);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .terrain-info{flex:1; min-width:0;}
+  .terrain-type{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .terrain-info-icon{
+    color:var(--text-faint);
+    font-size:11px;
+    cursor:help;
+    border:1px solid var(--text-faint);
+    border-radius:50%;
+    width:13px; height:13px;
+    display:inline-flex; align-items:center; justify-content:center;
+    line-height:1;
+    flex-shrink:0;
+  }
+  .terrain-elev{font-size:11.5px; color:var(--text-faint); margin-top:2px; line-height:1.5;}
+
+  .rain-strip{
+    display:flex;
+    border-top:1px solid var(--card-border);
+  }
+  .rain-cell{
+    flex:1;
+    padding:11px 8px;
+    text-align:center;
+    border-right:1px solid var(--card-border);
+  }
+  .rain-cell:last-child{border-right:none;}
+  .rain-cell .rv{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px;}
+  .rain-cell .rl{font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; margin-top:2px;}
+
+  .card-loading{
+    padding:24px 18px;
+    color:var(--text-faint);
+    font-size:13.5px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .spinner{
+    width:14px; height:14px;
+    border:2px solid var(--card-border);
+    border-top-color:var(--cyan);
+    border-radius:50%;
+    animation:spin 0.7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .updated{font-size:10.5px; color:var(--text-faint); padding:0 18px 14px; text-align:right;}
+
+  footer{
+    padding:24px 20px 8px;
+    text-align:center;
+    color:var(--text-faint);
+    font-size:11.5px;
+    line-height:1.6;
+  }
+
+  /* ---- Auth & profile gates ---- */
+  .auth-gate{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .auth-card{
+    width:100%;
+    max-width:400px;
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:18px;
+    padding:30px 26px;
+  }
+  .auth-brand{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:24px;
+    letter-spacing:-0.02em;
+    text-align:center;
+    margin-bottom:4px;
+  }
+  .auth-brand .malayalam{color:var(--cyan); font-size:14px; font-weight:500;}
+  .auth-subtitle{text-align:center; color:var(--text-dim); font-size:13px; margin-bottom:22px;}
+
+  .auth-tabs{
+    display:flex; gap:4px;
+    background:rgba(255,255,255,0.03);
+    border-radius:10px;
+    padding:4px;
+    margin-bottom:20px;
+  }
+  .auth-tab{
+    flex:1; text-align:center; padding:9px;
+    border-radius:8px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600; font-size:13.5px;
+    color:var(--text-faint);
+    cursor:pointer;
+    transition:background 0.15s ease, color 0.15s ease;
+  }
+  .auth-tab.active{ background:var(--cyan); color:#052027; }
+
+  .auth-field{ margin-bottom:12px; }
+  .auth-field label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; }
+  .auth-field input{
+    width:100%;
+    background:var(--bg);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:12px 13px;
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:14.5px;
+    outline:none;
+    transition:border-color 0.15s ease;
+  }
+  .auth-field input:focus{ border-color:var(--cyan); }
+
+  .auth-primary-btn{
+    width:100%;
+    background:var(--cyan);
+    color:#052027;
+    border:none;
+    border-radius:10px;
+    padding:13px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:14.5px;
+    cursor:pointer;
+    margin-top:4px;
+    transition:background 0.15s ease, transform 0.1s ease;
+  }
+  .auth-primary-btn:active{ transform:scale(0.98); }
+  .auth-primary-btn:disabled{ background:var(--cyan-dim); cursor:wait; }
+
+  .auth-divider{
+    display:flex; align-items:center; gap:10px;
+    color:var(--text-faint); font-size:11.5px;
+    margin:18px 0;
+  }
+  .auth-divider::before, .auth-divider::after{
+    content:''; flex:1; height:1px; background:var(--card-border);
+  }
+
+  .google-btn{
+    width:100%;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    background:#fff; color:#3c4043;
+    border:none; border-radius:10px;
+    padding:12px;
+    font-family:'Inter',sans-serif;
+    font-weight:600; font-size:14px;
+    cursor:pointer;
+    transition:transform 0.1s ease;
+  }
+  .google-btn:active{ transform:scale(0.98); }
+
+  .auth-error{ color:var(--coral); font-size:12.5px; margin-top:12px; min-height:16px; text-align:center; }
+
+  .profile-hint{ font-size:12px; color:var(--text-faint); margin:-6px 0 16px; line-height:1.5; }
+  .auth-skip-btn{
+    width:100%;
+    background:none; border:none;
+    color:var(--text-faint);
+    font-size:13px;
+    padding:10px;
+    cursor:pointer;
+    margin-top:6px;
+  }
+  .auth-skip-btn:hover{ color:var(--text-dim); }
+
+  /* ---- Account chip / menu (in header) ---- */
+  header .wrap{ flex-direction:row; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .header-titles{ display:flex; flex-direction:column; gap:4px; }
+  .account-chip{
+    display:flex; align-items:center; gap:8px;
+    cursor:pointer;
+    padding:5px 12px 5px 5px;
+    border-radius:20px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid var(--card-border);
+    position:relative;
+    flex-shrink:0;
+  }
+  .account-avatar{
+    width:26px; height:26px; border-radius:50%;
+    background:var(--cyan-dim);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff;
+    overflow:hidden; flex-shrink:0;
+  }
+  .account-avatar img{ width:100%; height:100%; object-fit:cover; }
+  .account-name{
+    font-size:12.5px; font-weight:600;
+    max-width:88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .account-menu{
+    position:absolute; top:calc(100% + 8px); right:0;
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:6px;
+    min-width:170px;
+    display:none;
+    flex-direction:column;
+    z-index:20;
+    box-shadow:0 10px 30px rgba(0,0,0,0.45);
+  }
+  .account-menu.open{ display:flex; }
+  .account-menu button{
+    background:none; border:none; color:var(--text);
+    text-align:left; padding:10px 12px;
+    border-radius:8px; font-size:13.5px;
+    cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .account-menu button:hover{ background:rgba(255,255,255,0.05); }
+  .account-menu button.danger{ color:var(--coral); }
+
+  /* ---- Tabs ---- */
+  .tab-bar{ display:flex; gap:6px; padding-top:4px; margin-bottom:4px; }
+  .tab-btn{
+    background:none; border:none;
+    color:var(--text-faint);
+    font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px;
+    padding:10px 4px 12px;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+    transition:color 0.15s ease, border-color 0.15s ease;
+  }
+  .tab-btn.active{ color:var(--text); border-bottom-color:var(--cyan); }
+  .tab-panel{ animation:tab-fade 0.25s ease; }
+  @keyframes tab-fade{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none;} }
+
+  .no-family-notice{
+    background:rgba(63,167,214,0.08);
+    border:1px solid rgba(63,167,214,0.25);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:12.5px; line-height:1.5;
+    color:var(--text-dim);
+    margin:0 0 16px;
+  }
+  .no-family-notice b{ color:var(--text); }
+
+  /* ---- Family onboarding ---- */
+  .family-onboarding{ padding:8px 0 24px; }
+  .onboard-card{
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    padding:22px 20px;
+  }
+  .onboard-title{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; }
+  .onboard-desc{ font-size:13px; color:var(--text-dim); margin:6px 0 16px; line-height:1.5; }
+  .onboard-divider{
+    display:flex; align-items:center; gap:10px;
+    color:var(--text-faint); font-size:11.5px;
+    margin:18px 0;
+  }
+  .onboard-divider::before, .onboard-divider::after{ content:''; flex:1; height:1px; background:var(--card-border); }
+  .code-input{ text-transform:uppercase; letter-spacing:3px; text-align:center; font-family:'Space Grotesk',sans-serif; font-weight:600; }
+  .join-preview{
+    font-size:12.5px; color:var(--safe);
+    background:rgba(95,185,138,0.1);
+    border:1px solid rgba(95,185,138,0.3);
+    border-radius:8px;
+    padding:9px 12px;
+    margin-bottom:12px;
+  }
+
+  /* ---- Family dashboard ---- */
+  .family-switcher{ display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:14px; }
+  .switcher-pill{
+    flex-shrink:0;
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    color:var(--text-dim);
+    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600;
+    padding:8px 14px;
+    border-radius:20px;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .switcher-pill.active{ background:var(--cyan); color:#052027; border-color:var(--cyan); }
+
+  .family-header{
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    padding:18px 20px;
+    margin-bottom:16px;
+  }
+  .family-header-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .family-name-row{ display:flex; align-items:center; gap:8px; }
+  .family-name-row h2{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px; }
+  .icon-btn{
+    background:none; border:none; color:var(--text-faint);
+    cursor:pointer; font-size:14px; padding:4px 6px; border-radius:6px;
+    transition:color 0.15s ease, background 0.15s ease;
+  }
+  .icon-btn:hover{ color:var(--cyan); background:rgba(255,255,255,0.05); }
+  .family-role-badge{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em;
+    color:var(--cyan); background:rgba(63,167,214,0.12);
+    border:1px solid rgba(63,167,214,0.3);
+    padding:3px 9px; border-radius:20px; flex-shrink:0;
+  }
+  .family-actions{ display:flex; gap:8px; margin-top:14px; }
+  .pill-btn{
+    background:rgba(255,255,255,0.04);
+    border:1px solid var(--card-border);
+    color:var(--text);
+    font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px;
+    padding:9px 16px; border-radius:10px;
+    cursor:pointer;
+    transition:background 0.15s ease, border-color 0.15s ease;
+  }
+  .pill-btn:hover{ background:rgba(255,255,255,0.08); border-color:var(--cyan-dim); }
+  .pill-btn.icon-only{ padding:9px 13px; }
+  .family-menu-wrap{ position:relative; }
+  .family-menu{
+    position:absolute; top:calc(100% + 8px); right:0;
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:12px; padding:6px; min-width:160px;
+    display:none; flex-direction:column; z-index:20;
+    box-shadow:0 10px 30px rgba(0,0,0,0.45);
+  }
+  .family-menu.open{ display:flex; }
+  .family-menu button{
+    background:none; border:none; color:var(--text);
+    text-align:left; padding:10px 12px; border-radius:8px; font-size:13.5px;
+    cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .family-menu button:hover{ background:rgba(255,255,255,0.05); }
+  .family-menu button.danger{ color:var(--coral); }
+
+  /* ---- Member cards ---- */
+  .member-cards{ display:flex; flex-direction:column; gap:12px; padding-bottom:20px; }
+  .member-card{
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    overflow:hidden;
+  }
+  .member-top{
+    display:flex; align-items:center; gap:12px;
+    padding:16px 16px;
+    cursor:pointer;
+  }
+  .member-avatar{
+    width:40px; height:40px; border-radius:50%;
+    background:var(--cyan-dim);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; color:#fff;
+    overflow:hidden; flex-shrink:0;
+  }
+  .member-avatar img{ width:100%; height:100%; object-fit:cover; }
+  .member-info{ flex:1; min-width:0; }
+  .member-name{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; display:flex; align-items:center; gap:6px; }
+  .you-badge{
+    font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em;
+    color:var(--text-faint); background:rgba(255,255,255,0.06);
+    padding:2px 6px; border-radius:20px; font-weight:600;
+  }
+  .member-meta{ font-size:11.5px; color:var(--text-faint); margin-top:2px; }
+  .status-badge{
+    font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px;
+    display:flex; align-items:center; gap:5px; flex-shrink:0;
+  }
+  .status-badge::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .status-badge.safe{ color:var(--safe); background:rgba(95,185,138,0.12); }
+  .status-badge.need_help{ color:var(--coral); background:rgba(231,111,81,0.12); }
+  .status-badge.no_response{ color:var(--amber); background:rgba(244,162,97,0.12); }
+  .expand-chevron{ color:var(--text-faint); font-size:12px; transition:transform 0.2s ease; flex-shrink:0; }
+  .member-card.expanded .expand-chevron{ transform:rotate(180deg); }
+
+  .member-home{
+    font-size:12px; color:var(--text-dim);
+    padding:0 16px 14px; margin-top:-6px;
+  }
+
+  .member-places{
+    border-top:1px solid var(--card-border);
+    padding:14px 16px;
+    display:none;
+    flex-direction:column;
+    gap:10px;
+  }
+  .member-card.expanded .member-places{ display:flex; }
+  .place-mini{
+    background:rgba(255,255,255,0.02);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:11px 13px;
+  }
+  .place-mini-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .place-mini-name{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; }
+  .risk-pill{
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;
+    padding:3px 8px; border-radius:20px; color:#052027; flex-shrink:0;
+  }
+  .place-mini-meta{ font-size:11px; color:var(--text-faint); margin-top:5px; line-height:1.5; }
+  .no-places-note{ font-size:12px; color:var(--text-faint); font-style:italic; }
+
+  .member-admin-actions{
+    display:flex; gap:8px;
+    padding:0 16px 16px;
+  }
+  .member-admin-actions button{
+    background:none; border:1px solid var(--card-border);
+    color:var(--text-dim); font-size:11.5px; font-weight:600;
+    padding:7px 12px; border-radius:8px; cursor:pointer;
+    font-family:'Inter',sans-serif;
+    transition:border-color 0.15s ease, color 0.15s ease;
+  }
+  .member-admin-actions button:hover{ border-color:var(--cyan-dim); color:var(--text); }
+  .member-admin-actions button.danger:hover{ border-color:var(--coral); color:var(--coral); }
+
+  /* ---- Modals ---- */
+  .modal-overlay{
+    position:fixed; inset:0; z-index:50;
+    background:rgba(5,15,20,0.7);
+    backdrop-filter:blur(2px);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+    animation:modal-fade 0.15s ease;
+  }
+  @keyframes modal-fade{ from{ opacity:0;} to{ opacity:1;} }
+  .modal-card{
+    width:100%; max-width:380px;
+    background:var(--bg-elevated);
+    border:1px solid var(--card-border);
+    border-radius:18px;
+    padding:24px;
+    animation:modal-pop 0.2s cubic-bezier(0.22,1,0.36,1);
+  }
+  @keyframes modal-pop{ from{ opacity:0; transform:scale(0.96) translateY(6px);} to{ opacity:1; transform:none;} }
+  .modal-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .modal-top h3{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; }
+  .modal-card h3{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; margin-bottom:4px; }
+  .modal-actions{ display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+  .danger-btn{ background:var(--coral) !important; color:#2b0d05 !important; }
+
+  .invite-code-display{
+    text-align:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:28px;
+    letter-spacing:6px;
+    color:var(--cyan);
+    background:rgba(63,167,214,0.08);
+    border:1px dashed rgba(63,167,214,0.35);
+    border-radius:12px;
+    padding:16px;
+    margin-bottom:16px;
+  }
+  .invite-qr-wrap{
+    display:flex; justify-content:center;
+    background:#fff; border-radius:12px; padding:14px;
+    margin-bottom:16px;
+  }
+  .invite-link-row{ display:flex; gap:8px; margin-bottom:14px; }
+  .invite-link-row input{
+    flex:1; background:var(--bg); border:1px solid var(--card-border);
+    border-radius:10px; padding:10px 12px; color:var(--text-dim); font-size:12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="water-bg" aria-hidden="true">
+  <svg class="wave-layer wave-back" viewBox="0 0 2400 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,150 C100,135 200,135 300,150 C400,165 500,165 600,150 C700,135 800,135 900,150 C1000,165 1100,165 1200,150 L1200,220 L0,220 Z"/>
+    <path d="M0,150 C100,135 200,135 300,150 C400,165 500,165 600,150 C700,135 800,135 900,150 C1000,165 1100,165 1200,150 L1200,220 L0,220 Z" transform="translate(1200,0)"/>
+  </svg>
+  <svg class="wave-layer wave-mid" viewBox="0 0 2400 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,140 C100,115 200,115 300,140 C400,165 500,165 600,140 C700,115 800,115 900,140 C1000,165 1100,165 1200,140 L1200,220 L0,220 Z"/>
+    <path d="M0,140 C100,115 200,115 300,140 C400,165 500,165 600,140 C700,115 800,115 900,140 C1000,165 1100,165 1200,140 L1200,220 L0,220 Z" transform="translate(1200,0)"/>
+  </svg>
+  <svg class="wave-layer wave-front" viewBox="0 0 2400 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,130 C100,95 200,95 300,130 C400,165 500,165 600,130 C700,95 800,95 900,130 C1000,165 1100,165 1200,130 L1200,220 L0,220 Z"/>
+    <path d="M0,130 C100,95 200,95 300,130 C400,165 500,165 600,130 C700,95 800,95 900,130 C1000,165 1100,165 1200,130 L1200,220 L0,220 Z" transform="translate(1200,0)"/>
+  </svg>
+</div>
+
+<div id="authGate" class="auth-gate">
+  <div class="auth-card">
+    <div class="auth-brand">Theeram <span class="malayalam">തീരം</span></div>
+    <div class="auth-subtitle">Sign in to track flood risk for your family</div>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabSignIn">Sign In</div>
+      <div class="auth-tab" id="tabSignUp">Sign Up</div>
+    </div>
+
+    <form id="authForm">
+      <div class="auth-field" id="authNameField" style="display:none">
+        <label for="authName">Name</label>
+        <input type="text" id="authName" autocomplete="name">
+      </div>
+      <div class="auth-field">
+        <label for="authEmail">Email</label>
+        <input type="email" id="authEmail" autocomplete="email" required>
+      </div>
+      <div class="auth-field">
+        <label for="authPassword">Password</label>
+        <input type="password" id="authPassword" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="auth-primary-btn" id="authSubmit">Sign in</button>
+    </form>
+
+    <div class="auth-divider">or</div>
+
+    <button class="google-btn" id="googleSignIn" type="button">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.85.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+      Continue with Google
+    </button>
+
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
+<div id="profileGate" class="auth-gate" style="display:none">
+  <div class="auth-card">
+    <div class="auth-brand">Almost there</div>
+    <div class="auth-subtitle">A few details for your Theeram profile</div>
+    <div class="profile-hint">Only your name is required. Everything else helps your family circle reach you in an emergency — add it now or later from your profile.</div>
+
+    <form id="profileForm">
+      <div class="auth-field">
+        <label for="profileName">Name *</label>
+        <input type="text" id="profileName" required>
+      </div>
+      <div class="auth-field">
+        <label for="profilePhone">Phone (optional)</label>
+        <input type="tel" id="profilePhone" placeholder="+91…">
+      </div>
+      <div class="auth-field">
+        <label for="profileHome">Home location (optional)</label>
+        <input type="text" id="profileHome" placeholder="e.g. Kochi, Kerala">
+      </div>
+      <div class="auth-field">
+        <label for="profileEmergName">Emergency contact name (optional)</label>
+        <input type="text" id="profileEmergName">
+      </div>
+      <div class="auth-field">
+        <label for="profileEmergPhone">Emergency contact phone (optional)</label>
+        <input type="tel" id="profileEmergPhone">
+      </div>
+      <button type="submit" class="auth-primary-btn" id="profileSubmit">Save profile</button>
+      <button type="button" class="auth-skip-btn" id="profileSkip">Skip for now</button>
+    </form>
+    <div class="auth-error" id="profileError"></div>
+  </div>
+</div>
+
+<div id="appShell" style="display:none">
+
+<header>
+  <div class="wrap">
+    <div class="header-titles">
+      <div class="brand">Theeram <span class="malayalam">തീരം · shore</span></div>
+      <div class="tagline">Rainfall-based flood risk for the places you care about</div>
+    </div>
+    <div class="account-chip" id="accountChip">
+      <div class="account-avatar" id="accountAvatar"></div>
+      <div class="account-name" id="accountName"></div>
+      <div class="account-menu" id="accountMenu">
+        <button id="editProfileBtn">Edit profile</button>
+        <button id="signOutBtn" class="danger">Sign out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="riskAlertBanner" class="risk-alert-banner" style="display:none"></div>
+  <div class="disclaimer">
+    <b>Informational tool only.</b> This is a personal risk estimate built from open weather data — not an official warning. For emergencies, always follow Kerala SDMA / NDMA / local authority guidance.
+  </div>
+</div>
+
+<main>
+  <div class="wrap tab-bar">
+    <button class="tab-btn active" id="tabPlacesBtn" data-tab="places">My Places</button>
+    <button class="tab-btn" id="tabFamilyBtn" data-tab="family">Family</button>
+  </div>
+
+  <div id="placesTab" class="tab-panel">
+    <div class="wrap add-section">
+      <div class="add-form">
+        <input type="text" id="locInput" placeholder="Add a place — e.g. Kochi, Alappuzha" autocomplete="off">
+        <button class="add-btn" id="addBtn">Add</button>
+      </div>
+      <div class="form-status" id="formStatus"></div>
+    </div>
+
+    <div class="wrap">
+      <div id="noFamilyNotice" class="no-family-notice" style="display:none">
+        Join or create a family circle in the <b>Family</b> tab to start saving places — places belong to a family circle now, so everyone in it can see them.
+      </div>
+      <div id="emptyState" class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 15C3.5 13 5.5 13 7 15C8.5 17 10.5 17 12 15C13.5 13 15.5 13 17 15C18.5 17 20.5 17 22 15" stroke="#3FA7D6" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M2 19C3.5 17 5.5 17 7 19C8.5 21 10.5 21 12 19C13.5 17 15.5 17 17 19C18.5 21 20.5 21 22 19" stroke="#3FA7D6" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M12 3V11M12 11L9 8M12 11L15 8" stroke="#3FA7D6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p>No places saved yet. Add your home, a family member's place, or anywhere you want to keep an eye on.</p>
+      </div>
+      <div class="cards" id="cardsContainer"></div>
+    </div>
+  </div>
+
+  <div id="familyTab" class="tab-panel" style="display:none">
+    <div class="wrap">
+
+      <div id="familyOnboarding" class="family-onboarding">
+        <div class="onboard-card">
+          <div class="onboard-title">Create a Family Circle</div>
+          <p class="onboard-desc">Start a circle to track flood risk together with the people you care about.</p>
+          <div class="auth-field">
+            <input type="text" id="createFamilyName" placeholder="e.g. The Menons">
+          </div>
+          <button class="auth-primary-btn" id="createFamilyBtn">Create Family</button>
+          <div class="auth-error" id="createFamilyError"></div>
+        </div>
+
+        <div class="onboard-divider">or</div>
+
+        <div class="onboard-card">
+          <div class="onboard-title">Join a Family Circle</div>
+          <p class="onboard-desc">Enter the invite code someone shared with you.</p>
+          <div class="auth-field">
+            <input type="text" id="joinFamilyCode" placeholder="e.g. 7K2P9Q" class="code-input">
+          </div>
+          <div id="joinPreview" class="join-preview" style="display:none"></div>
+          <button class="auth-primary-btn" id="joinFamilyBtn">Join Family</button>
+          <div class="auth-error" id="joinFamilyError"></div>
+        </div>
+      </div>
+
+      <div id="familyDashboard" class="family-dashboard" style="display:none">
+        <div class="family-switcher" id="familySwitcher"></div>
+
+        <div class="family-header">
+          <div class="family-header-top">
+            <div class="family-name-row">
+              <h2 id="familyNameDisplay"></h2>
+              <button class="icon-btn" id="renameFamilyBtn" title="Rename family">✎</button>
+            </div>
+            <span class="family-role-badge" id="familyRoleBadge"></span>
+          </div>
+          <div class="family-actions">
+            <button class="pill-btn" id="inviteBtn">+ Invite</button>
+            <div class="family-menu-wrap">
+              <button class="pill-btn icon-only" id="familyMenuBtn">⋯</button>
+              <div class="family-menu" id="familyMenu">
+                <button id="leaveFamilyBtn">Leave family</button>
+                <button id="deleteFamilyBtn" class="danger" style="display:none">Delete family</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="member-cards" id="memberCards"></div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer>
+  Rainfall data: Open-Meteo · Geocoding: OpenStreetMap<br>
+  Built by Harishreyas · Not affiliated with any government agency
+</footer>
+
+</div>
+
+<div id="inviteModal" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <div class="modal-top">
+      <h3>Invite to <span id="inviteFamilyName"></span></h3>
+      <button class="icon-btn" id="closeInviteModal">✕</button>
+    </div>
+    <div class="invite-code-display" id="inviteCodeDisplay"></div>
+    <div class="invite-qr-wrap"><canvas id="inviteQR" width="180" height="180"></canvas></div>
+    <div class="invite-link-row">
+      <input type="text" id="inviteLinkInput" readonly>
+      <button class="pill-btn" id="copyLinkBtn">Copy</button>
+    </div>
+    <div class="auth-error" id="inviteModalStatus" style="color:var(--text-dim)"></div>
+    <button class="auth-skip-btn" id="regenerateCodeBtn">Generate new code (invalidates the old one)</button>
+  </div>
+</div>
+
+<div id="joinLinkModal" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <h3>Join family circle?</h3>
+    <p id="joinLinkText" class="onboard-desc"></p>
+    <div class="modal-actions">
+      <button class="auth-primary-btn" id="joinLinkConfirmBtn">Join</button>
+      <button class="auth-skip-btn" id="joinLinkCancelBtn">Not now</button>
+    </div>
+    <div class="auth-error" id="joinLinkError"></div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmText" class="onboard-desc"></p>
+    <div class="modal-actions">
+      <button class="auth-primary-btn danger-btn" id="confirmActionBtn">Confirm</button>
+      <button class="auth-skip-btn" id="confirmCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const TERRAIN_ICONS = {
+  coastal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 15C3.5 13 5.5 13 7 15C8.5 17 10.5 17 12 15C13.5 13 15.5 13 17 15C18.5 17 20.5 17 22 15" stroke="#3FA7D6" stroke-width="1.8" stroke-linecap="round"/><path d="M2 19C3.5 17 5.5 17 7 19C8.5 21 10.5 21 12 19C13.5 17 15.5 17 17 19C18.5 21 20.5 21 22 19" stroke="#3FA7D6" stroke-width="1.8" stroke-linecap="round" opacity="0.5"/></svg>',
+  floodplain: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="14" width="18" height="7" rx="1" stroke="#3FA7D6" stroke-width="1.6"/><path d="M3 14L9 8L13 11L21 4" stroke="#3FA7D6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  midland: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 19L8 9L12 14L16 7L22 19" stroke="#3FA7D6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  highland: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 19L9 5L13 12L16 8L22 19" stroke="#3FA7D6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 5L11 9H7L9 5Z" fill="#3FA7D6"/></svg>'
+};
+
+function classifyTerrain(elevation){
+  if(elevation == null || isNaN(elevation)) return null;
+  if(elevation < 8){
+    return { type:'Coastal', icon: TERRAIN_ICONS.coastal, desc:'Coastal lowland — tidal and storm-surge exposure compounds with rainfall.' };
+  } else if(elevation < 40){
+    return { type:'Low-lying floodplain', icon: TERRAIN_ICONS.floodplain, desc:'Flat, low terrain — water tends to pool and drain slowly here.' };
+  } else if(elevation < 150){
+    return { type:'Midland', icon: TERRAIN_ICONS.midland, desc:'Gently sloped midland — moderate runoff, lower standing-water risk.' };
+  } else {
+    return { type:'Highland', icon: TERRAIN_ICONS.highland, desc:'Higher elevation — lower flood risk, but watch landslide-prone slopes.' };
+  }
+}
+
+async function fetchElevation(lat, lon){
+  const url = `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Elevation data unavailable');
+  const data = await res.json();
+  return (data.elevation && data.elevation.length) ? data.elevation[0] : null;
+}
+
+const mapInstances = {};
+
+function initMap(loc){
+  const el = document.getElementById(`map-${loc.id}`);
+  if(!el || typeof L === 'undefined') return;
+  const map = L.map(el, {
+    center: [loc.lat, loc.lon],
+    zoom: 12,
+    zoomControl: true,
+    attributionControl: false,
+    scrollWheelZoom: false
+  });
+  L.control.attribution({ prefix: false, position: 'bottomright' })
+    .addAttribution('&copy; OpenStreetMap &copy; CARTO')
+    .addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+  const icon = L.divIcon({
+    className: '',
+    html: '<div class="map-pin"><span class="pin-pulse"></span><span class="pin-dot"></span></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  });
+  L.marker([loc.lat, loc.lon], { icon, interactive: false }).addTo(map);
+  mapInstances[loc.id] = map;
+}
+
+// Elevation never changes for a fixed lat/lon, so once a location doc already
+// has it cached (written when the place was first added), skip the API call.
+async function getElevationAndTerrain(loc){
+  if(loc.elevation != null && loc.terrainType){
+    return { elevation: loc.elevation, terrain: classifyTerrain(loc.elevation) };
+  }
+  const elevation = await fetchElevation(loc.lat, loc.lon);
+  return { elevation, terrain: classifyTerrain(elevation) };
+}
+
+async function loadTerrain(loc){
+  const wrap = document.getElementById(`terrain-${loc.id}`);
+  if(!wrap) return;
+  try{
+    const { elevation, terrain } = await getElevationAndTerrain(loc);
+    if(!terrain){ wrap.style.display = 'none'; return; }
+    wrap.innerHTML = `
+      <div class="terrain-icon">${terrain.icon}</div>
+      <div class="terrain-info">
+        <div class="terrain-type">${terrain.type} <span class="terrain-info-icon" title="Simplified terrain classification from open elevation data (Open-Meteo). True 3D terrain visualization would need Mapbox GL with a paid API key.">i</span></div>
+        <div class="terrain-elev">~${Math.round(elevation)}m elevation · ${terrain.desc}</div>
+      </div>
+    `;
+    // Self-heal older docs that predate the cached elevation/terrainType fields.
+    if(loc.elevation == null && window.theeramFamily){
+      window.theeramFamily.updateLocation(loc.id, { elevation, terrainType: terrain.type }).catch(()=>{});
+    }
+  }catch(e){
+    wrap.style.display = 'none';
+  }
+}
+
+let locations = [];
+let hasFamily = false;
+
+const cardsContainer = document.getElementById('cardsContainer');
+const emptyState = document.getElementById('emptyState');
+const noFamilyNotice = document.getElementById('noFamilyNotice');
+const addBtn = document.getElementById('addBtn');
+const locInput = document.getElementById('locInput');
+const formStatus = document.getElementById('formStatus');
+
+function renderEmptyState(){
+  noFamilyNotice.style.display = hasFamily ? 'none' : '';
+  emptyState.style.display = (hasFamily && locations.length === 0) ? 'block' : 'none';
+  addBtn.disabled = !hasFamily;
+  locInput.disabled = !hasFamily;
+}
+
+async function geocode(query){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=in&q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  if(!res.ok) throw new Error('Geocoding failed');
+  const data = await res.json();
+  if(!data.length) throw new Error('Place not found. Try a more specific name (e.g. add district or state).');
+  return {
+    name: data[0].display_name.split(',').slice(0,2).join(', '),
+    lat: parseFloat(data[0].lat),
+    lon: parseFloat(data[0].lon)
+  };
+}
+window.theeramGeocode = geocode;
+
+async function fetchRainfall(lat, lon){
+  // past 3 days daily precipitation sum + hourly for the next 2 days, so we
+  // can compute both the trailing 24/48/72h totals AND a forward-looking
+  // next-24h forecast total from the same call.
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&past_days=3&forecast_days=2&timezone=auto`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Weather data unavailable');
+  const data = await res.json();
+  const hours = data.hourly.precipitation;
+  const times = data.hourly.time;
+  const now = new Date();
+  // "now" is approximated as the last hour at/before the current time.
+  let nowIdx = times.length - 1;
+  for(let i = 0; i < times.length; i++){
+    if(new Date(times[i]) > now){ nowIdx = Math.max(0, i - 1); break; }
+  }
+  function sumLastNHours(n){
+    let sum = 0;
+    for(let i = Math.max(0, nowIdx - n); i <= nowIdx; i++){
+      if(hours[i] != null) sum += hours[i];
+    }
+    return Math.round(sum * 10) / 10;
+  }
+  function sumNextNHours(n){
+    let sum = 0;
+    for(let i = nowIdx + 1; i <= Math.min(hours.length - 1, nowIdx + n); i++){
+      if(hours[i] != null) sum += hours[i];
+    }
+    return Math.round(sum * 10) / 10;
+  }
+  return {
+    r24: sumLastNHours(24),
+    r48: sumLastNHours(48),
+    r72: sumLastNHours(72),
+    forecastNext24h: sumNextNHours(24)
+  };
+}
+
+function computeRisk(rain){
+  // Based on IMD rainfall intensity classification (mm in 24h):
+  // Heavy: 64.5-115.5, Very Heavy: 115.6-204.4, Extremely Heavy: >204.5
+  const { r24, r48, r72 } = rain;
+  let level, pct, color, reason;
+
+  if(r24 >= 204.5 || r48 >= 300){
+    level = 'Severe'; pct = 95; color = 'var(--coral)';
+    reason = `Extremely heavy rainfall detected — ${r24}mm in the last 24h. This crosses IMD's "extremely heavy" threshold.`;
+  } else if(r24 >= 115.6 || r48 >= 180){
+    level = 'High'; pct = 72; color = 'var(--amber)';
+    reason = `Very heavy rainfall — ${r24}mm in 24h, ${r48}mm over 48h. Ground saturation risk is elevated.`;
+  } else if(r24 >= 64.5 || r72 >= 150){
+    level = 'Moderate'; pct = 45; color = 'var(--amber)';
+    reason = `Heavy rainfall recorded — ${r24}mm in the last 24h. Worth monitoring, especially in low-lying or coastal areas.`;
+  } else if(r24 > 20 || r72 > 60){
+    level = 'Low'; pct = 20; color = 'var(--safe)';
+    reason = `Rainfall is light to moderate (${r24}mm/24h). No elevated flood signal right now.`;
+  } else {
+    level = 'Minimal'; pct = 6; color = 'var(--safe)';
+    reason = `Little to no recent rainfall (${r24}mm/24h) recorded for this location.`;
+  }
+  return { level, pct, color, reason };
+}
+
+function cardTemplate(loc){
+  return `
+    <div class="card" data-id="${loc.id}">
+      <div class="card-top">
+        <div>
+          <div class="loc-name">${loc.name}</div>
+          <div class="loc-meta">${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)}</div>
+        </div>
+        <button class="remove-btn" data-remove="${loc.id}" title="Remove">✕</button>
+      </div>
+      <div class="map-wrap" id="map-${loc.id}"></div>
+      <div class="terrain-row" id="terrain-${loc.id}">
+        <div class="terrain-icon"><div class="spinner" style="width:12px;height:12px;"></div></div>
+        <div class="terrain-info">
+          <div class="terrain-type">Checking terrain…</div>
+        </div>
+      </div>
+      <div class="card-body" id="body-${loc.id}">
+        <div class="card-loading"><div class="spinner"></div> Checking rainfall data…</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCards(){
+  Object.values(mapInstances).forEach(map=>{ try{ map.remove(); }catch(e){} });
+  for(const key in mapInstances) delete mapInstances[key];
+
+  cardsContainer.innerHTML = locations.map(cardTemplate).join('');
+  renderEmptyState();
+  document.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-remove');
+      if(window.theeramFamily) window.theeramFamily.removeLocation(id);
+    });
+  });
+  locations.forEach(loc=>{
+    initMap(loc);
+    loadTerrain(loc);
+    loadCardData(loc);
+  });
+}
+
+async function loadCardData(loc){
+  const body = document.getElementById(`body-${loc.id}`);
+  if(!body) return;
+  try{
+    const rain = await fetchRainfall(loc.lat, loc.lon);
+    const risk = computeRisk(rain);
+    body.innerHTML = `
+      <div class="gauge-row">
+        <div class="gauge"><div class="gauge-fill" style="height:${risk.pct}%; background:${risk.color}"></div></div>
+        <div class="risk-info">
+          <div class="risk-label"><span class="risk-dot" style="background:${risk.color}"></span>${risk.level} risk</div>
+          <div class="risk-reason">${risk.reason}</div>
+        </div>
+      </div>
+      <div class="rain-strip">
+        <div class="rain-cell"><div class="rv">${rain.r24}mm</div><div class="rl">24h</div></div>
+        <div class="rain-cell"><div class="rv">${rain.r48}mm</div><div class="rl">48h</div></div>
+        <div class="rain-cell"><div class="rv">${rain.r72}mm</div><div class="rl">72h</div></div>
+      </div>
+      <div class="updated">Updated ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+    `;
+    // trigger transition
+    requestAnimationFrame(()=>{
+      const fill = body.querySelector('.gauge-fill');
+      if(fill) fill.style.height = risk.pct + '%';
+    });
+    // NOTE: this used to also write the refreshed numbers back to Firestore
+    // here. That was a real bug: this function runs from renderCards(),
+    // which runs every time the locations listener fires — including in
+    // response to writes THIS function made. Every render wrote fresh data,
+    // which re-triggered the listener, which re-rendered, which wrote again,
+    // forever. On a real device this showed up as the map endlessly
+    // reinitializing and "Checking rainfall data…" never resolving — each
+    // render cycle interrupted the previous one before its fetch could
+    // settle. Persisting to Firestore is checkFamilyRiskOnce()'s job now
+    // (staleness-gated, runs once per family per session); this function
+    // only fetches-and-displays for whoever is currently looking.
+  }catch(e){
+    body.innerHTML = `<div class="card-loading" style="color:var(--coral)">Couldn't load data for this location. Pull to refresh later.</div>`;
+  }
+}
+
+addBtn.addEventListener('click', handleAdd);
+locInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') handleAdd(); });
+
+async function handleAdd(){
+  const q = locInput.value.trim();
+  if(!q){ return; }
+  if(!window.theeramFamily || !window.theeramFamily.getState().activeFamilyId){
+    formStatus.textContent = 'Join or create a family first, in the Family tab.';
+    formStatus.classList.add('error');
+    return;
+  }
+  formStatus.textContent = '';
+  formStatus.classList.remove('error');
+  addBtn.disabled = true;
+  addBtn.textContent = 'Adding…';
+  try{
+    const geo = await geocode(q);
+    const [elevation, rain] = await Promise.all([
+      fetchElevation(geo.lat, geo.lon).catch(()=>null),
+      fetchRainfall(geo.lat, geo.lon)
+    ]);
+    const terrain = classifyTerrain(elevation);
+    const risk = computeRisk(rain);
+    await window.theeramFamily.addLocation({
+      name: geo.name, lat: geo.lat, lon: geo.lon,
+      elevation, terrainType: terrain ? terrain.type : null,
+      rain: { r24: rain.r24, r48: rain.r48, r72: rain.r72 },
+      forecast: { next24hMm: rain.forecastNext24h },
+      risk: { level: risk.level, pct: risk.pct, color: risk.color, reason: risk.reason }
+    });
+    locInput.value = '';
+  }catch(err){
+    formStatus.textContent = err.message || 'Something went wrong. Try again.';
+    formStatus.classList.add('error');
+  }finally{
+    addBtn.disabled = false;
+    addBtn.textContent = 'Add';
+  }
+}
+
+document.addEventListener('theeram:locationschanged', (e)=>{
+  locations = e.detail.locations;
+  hasFamily = e.detail.hasFamily;
+  renderCards();
+});
+
+// ---------------------------------------------------------------------
+// Client-side flood-risk monitoring for the whole family.
+//
+// There is deliberately no server here — no Cloud Function, no scheduled
+// job. This project stays on Firebase's free Spark plan, so "monitoring"
+// means: whenever ANY family member has the app open (on load, or whenever
+// they reload), every family location that hasn't been checked recently
+// gets re-fetched from Open-Meteo, its risk recomputed, and the result
+// written back to Firestore so everyone's dashboard shows reasonably fresh
+// data even if they didn't personally trigger the check. That's a real
+// limitation, not a hidden one: if nobody opens the app for a day, nothing
+// gets checked that day. True background monitoring needs a server
+// (Cloud Functions on Blaze) — out of scope for this prototype by request.
+//
+// notifyFamilyOfRisk() below is the seam for that future work: today it
+// only shows an in-app banner to whoever is looking at the screen right
+// now. A real push-notification system would call the same "a location
+// just crossed into High/Extreme" signal from a server-side trigger
+// instead of a client page load, and fan it out via FCM — the risk
+// *detection* logic (comparing old vs. new level) doesn't need to change,
+// only how the result gets delivered.
+// ---------------------------------------------------------------------
+const RISK_STALE_MS = 10 * 60 * 1000; // don't re-check a location more than once per 10 minutes
+let riskCheckedFamilyId = null;
+const dismissedAlertKeys = new Set();
+
+function isHighOrExtreme(level){ return level === 'High' || level === 'Severe'; }
+
+async function checkFamilyRiskOnce(detail){
+  const { family, members, locations: familyLocations, myUid } = detail;
+  if(!family || !familyLocations || !familyLocations.length) return;
+  if(riskCheckedFamilyId === family.id) return; // already ran for this family this session
+  riskCheckedFamilyId = family.id;
+
+  const memberNameByUid = {};
+  (members || []).forEach(m => { memberNameByUid[m.id] = m.name || 'A family member'; });
+
+  const now = Date.now();
+  const crossedIntoHighRisk = [];
+
+  for(const loc of familyLocations){
+    const lastMs = (loc.lastUpdated && typeof loc.lastUpdated.toMillis === 'function') ? loc.lastUpdated.toMillis() : 0;
+    if(now - lastMs < RISK_STALE_MS) continue;
+    try{
+      const rain = await fetchRainfall(loc.lat, loc.lon);
+      const risk = computeRisk(rain);
+      const wasHighRisk = loc.risk && isHighOrExtreme(loc.risk.level);
+      if(isHighOrExtreme(risk.level) && !wasHighRisk){
+        crossedIntoHighRisk.push({
+          locationId: loc.id,
+          placeName: loc.name,
+          ownerUid: loc.ownerUid,
+          ownerName: memberNameByUid[loc.ownerUid] || 'A family member',
+          isMine: loc.ownerUid === myUid,
+          risk
+        });
+      }
+      if(window.theeramFamily){
+        window.theeramFamily.updateLocation(loc.id, {
+          rain: { r24: rain.r24, r48: rain.r48, r72: rain.r72 },
+          forecast: { next24hMm: rain.forecastNext24h },
+          risk: { level: risk.level, pct: risk.pct, color: risk.color, reason: risk.reason }
+        }).catch(()=>{});
+      }
+    }catch(e){
+      // One location failing to refresh (e.g. Open-Meteo hiccup) shouldn't stop the rest.
+    }
+  }
+
+  if(crossedIntoHighRisk.length) notifyFamilyOfRisk(crossedIntoHighRisk);
+}
+
+function notifyFamilyOfRisk(alerts){
+  const banner = document.getElementById('riskAlertBanner');
+  const fresh = alerts.filter(a => !dismissedAlertKeys.has(a.locationId + ':' + a.risk.level));
+  if(!fresh.length) return;
+  banner.innerHTML = fresh.map(a => {
+    const icon = a.risk.level === 'Severe' ? '🆘' : '⚠️';
+    const label = a.risk.level === 'Severe' ? 'Extreme' : 'High';
+    const who = a.isMine ? 'your place' : `${a.ownerName}'s place — please check on your family member`;
+    return `
+      <div class="risk-alert-item" data-key="${a.locationId}:${a.risk.level}">
+        <div class="risk-alert-text">${icon} <b>${label} Flood Risk</b> — ${a.placeName} (${who}). ${a.risk.reason}</div>
+      </div>
+    `;
+  }).join('') + `<button class="risk-alert-dismiss" id="dismissRiskAlert">Dismiss</button>`;
+  banner.style.display = '';
+  document.getElementById('dismissRiskAlert').addEventListener('click', () => {
+    fresh.forEach(a => dismissedAlertKeys.add(a.locationId + ':' + a.risk.level));
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  });
+}
+
+document.addEventListener('theeram:dashboardchanged', (e) => { checkFamilyRiskOnce(e.detail); });
+
+// register service worker for installability
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+<script type="module" src="js/auth.js"></script>
+<script type="module" src="js/family-ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+	"appId": "com.theeram.app",
+	"appName": "Theeram",
+	"webDir": "www",
+	"backgroundColor": "#0B2027",
+	"server": {
+		"androidScheme": "https"
+	}
+}
