@@ -177,7 +177,17 @@ accountChip.addEventListener('click', () => accountMenu.classList.toggle('open')
 document.addEventListener('click', (e) => {
   if(!accountChip.contains(e.target)) accountMenu.classList.remove('open');
 });
-signOutBtn.addEventListener('click', () => { accountMenu.classList.remove('open'); signOut(auth); });
+signOutBtn.addEventListener('click', async () => {
+  accountMenu.classList.remove('open');
+  // Detach this device's push registration BEFORE the session ends: the
+  // Firestore rule is isOwner(uid), so after signOut() the delete is denied
+  // and the token would stay filed under the departing account. Signing out
+  // must never be blocked by it, hence the catch.
+  try {
+    if (window.theeramPush) await window.theeramPush.unregisterDevice();
+  } catch (e) { /* non-fatal — proceed with sign-out regardless */ }
+  signOut(auth);
+});
 editProfileBtn.addEventListener('click', () => {
   accountMenu.classList.remove('open');
   profileNameInput.value = currentProfile.name || '';
