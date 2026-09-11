@@ -168,11 +168,34 @@ describe('monitor — state machine end to end', () => {
     assert.equal(down.alertsWouldSend, 0, 'severe -> high is silent');
     assert.equal((await read('f1', 'l1')).alertState.band, 'high');
 
-    const clear = await run({ [CELL]: DRY }, { at: T0 + 4 * HOUR });
+    // Leaving the band opens the clearing dwell rather than clearing at once.
+    const dip = await run({ [CELL]: DRY }, { at: T0 + 4 * HOUR });
+    assert.equal(dip.alertsWouldSend, 0, 'one clean reading must not clear');
+    const dipped = await read('f1', 'l1');
+    assert.equal(dipped.alertState.band, 'high', 'alert band held during the dwell');
+    assert.equal(dipped.alertState.clearingSince, T0 + 4 * HOUR);
+    assert.equal(dipped.alertState.episodeId, T0 + HOUR, 'episode still open');
+
+    const clear = await run({ [CELL]: DRY }, { at: T0 + 8 * HOUR });
     assert.equal(clear.decisions[0].kind, 'all_clear');
     const d = await read('f1', 'l1');
     assert.equal(d.alertState.band, 'normal');
     assert.equal(d.alertState.episodeId, null);
+    assert.equal(d.alertState.clearingSince, null);
+  });
+
+  test('a brief dip does not clear, and recovery does not re-alert', async () => {
+    await run({ [CELL]: HIGH });                                  // first
+    const dip = await run({ [CELL]: DRY }, { at: T0 + HOUR });    // dip
+    const back = await run({ [CELL]: HIGH }, { at: T0 + 2 * HOUR }); // recovery
+    assert.equal(dip.alertsWouldSend, 0);
+    assert.equal(back.alertsWouldSend, 0);
+    // Exactly one decision record for the whole sequence.
+    assert.equal((await db.collection('alertDecisions').get()).size, 1);
+    const d = await read('f1', 'l1');
+    assert.equal(d.alertState.band, 'high');
+    assert.equal(d.alertState.clearingSince, null);
+    assert.equal(d.alertState.episodeId, T0, 'still the original episode');
   });
 
   test('sustained reminder fires after the cooldown', async () => {

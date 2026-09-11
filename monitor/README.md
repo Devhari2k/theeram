@@ -89,8 +89,33 @@ Bands: `normal` (Minimal/Low/Moderate) · `high` (High) · `severe` (Severe).
 | high → severe | `escalation` — same episode |
 | severe → high | *(silent state update)* |
 | still elevated, ≥12 h since last | `sustained` |
-| high/severe → normal | `all_clear` — episode closes |
+| high/severe → normal | *(dwell opens — see below)* |
+| normal held ≥3 h | `all_clear` — episode closes |
 | normal → normal | *(nothing)* |
+
+### Exit hysteresis
+
+Entry is immediate; exit is not. When the level leaves the alert band the
+episode enters a **clearing dwell** instead of ending: `clearingSince` is
+stamped, the alert `band` is held at its previous value, and nothing is
+decided. Only if the level stays out of the band for `clearDwellMs`
+(default 3 h) does `all_clear` fire and the episode close.
+
+Any elevated reading during the dwell cancels it. The episode simply
+continues — no second `first`, and `episodeId` is unchanged — because from
+the user's point of view the alert never ended.
+
+Rainfall parked on a threshold crosses it repeatedly. Without this, r24
+oscillating around 115.6 mm emitted an all-clear and a fresh alert every hour;
+a test now pins that same 12-hour oscillation to exactly one notification.
+
+The dwell is a duration rather than a run count, so a missed or delayed run
+does not restart the clock. It is also not conditioned on the level falling
+further (e.g. all the way to Minimal), because risk that plateaus at Moderate
+would then never clear and the episode would be stuck open forever.
+
+The sustained-reminder cooldown is measured from the last *decision*, so a dip
+and recovery cannot be used to trigger an early reminder.
 
 `episodeId` is fixed when an episode opens and is part of each decision's
 document id, so re-deciding the same transition **overwrites** rather than
@@ -118,6 +143,3 @@ public repo are publicly readable.
 - Client `checkFamilyRiskOnce()` still runs; its cross-member write is removed
   only once the monitor is proven
 - No Firestore rules change (device-token storage needs one; see Phase 2.3 §10)
-- Phase 2.3's exit **hysteresis** is not implemented — `all_clear` fires as
-  soon as the level leaves the band. Worth adding before delivery is live, so
-  a value oscillating around a threshold cannot emit alert/all-clear pairs.
