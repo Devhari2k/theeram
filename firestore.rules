@@ -1,0 +1,230 @@
+rules_version = '2';
+
+// Theeram — Firestore Security Rules
+//
+// Data model this maps to:
+//   /users/{uid}                                   — one profile doc per account
+//   /families/{familyId}                           — family circle metadata (name, createdBy, ...)
+//   /families/{familyId}/members/{uid}              — membership doc; doc ID == the member's uid,
+//                                                      and it also carries a `uid` field with the
+//                                                      same value (needed so the "which families am
+//                                                      I in" collection-group query can be scoped
+//                                                      safely by rules — see the members match below).
+//                                                      Presence of this doc IS "confirmed membership".
+//   /families/{familyId}/locations/{locationId}     — saved locations, each owned by one member (ownerUid)
+//   /families/{familyId}/{anyOtherSubcollection}/*  — future family-scoped data (e.g. safety checks)
+//   /inviteCodes/{code}                             — doc ID is the invite code itself
+//
+// Everything not explicitly matched below is denied by the final catch-all.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // "Confirmed member" = a members/{uid} doc exists for this user under this family.
+    // Membership is never inferred from a field on some other doc — only from this doc's existence,
+    // so removing/leaving a family (deleting this doc) immediately revokes all family-scoped access.
+    function isFamilyMember(familyId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid));
+    }
+
+    function isFamilyAdmin(familyId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ---------------------------------------------------------------------
+    // Users — a profile is private to its owner. No one else can read it,
+    // including other members of the same family circle.
+    // ---------------------------------------------------------------------
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // ---------------------------------------------------------------------
+    // Family circles
+    // ---------------------------------------------------------------------
+    match /families/{familyId} {
+      allow read: if isFamilyMember(familyId);
+      // Anyone signed in can create a family circle; the client creates the
+      // family doc and the creator's own admin membership doc together.
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+
+      // SECURITY (fix 2): createdBy authorizes the founder branch of the
+      // members/{uid} create rule below, so it must never change after
+      // creation. Otherwise an admin could repoint it at any outside account,
+      // and that account could then self-insert as an admin member with no
+      // invite code at all. Splitting update from delete keeps the delete
+      // rule unchanged (deletes carry no request.resource to compare).
+      allow update: if isFamilyAdmin(familyId) &&
+        request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if isFamilyAdmin(familyId);
+
+      // ---- Membership ----
+      match /members/{memberUid} {
+        // Direct access at this fixed path depth: a confirmed family member can
+        // fetch/list this family's member roster (that's the Family Dashboard).
+        // NOTE: this does NOT also cover collection-group queries — Firestore
+        // only applies a fixed-depth match like this one to direct access at
+        // that exact path shape. The separate top-level
+        // `match /{path=**}/members/{id}` block below is what governs the
+        // "which families am I in" collection-group query; first attempt here
+        // used resource.data.uid on this block for that and got a flat
+        // permission-denied at the default-deny catch-all, because the rule
+        // engine never even considered this block for a collection-group scan.
+        allow read: if isFamilyMember(familyId);
+
+        // A user can only ever create their OWN membership doc, and only one of two ways:
+        //   (a) they are the family's founder, creating their own admin doc right after
+        //       creating the family doc (families/{familyId}.createdBy already == them), or
+        //   (b) they are joining via a specific, unused invite code for THIS family — the
+        //       client must create this doc and mark that inviteCodes/{code} doc used:true
+        //       in the SAME Firestore transaction, so the two writes succeed or fail together
+        //       and two people can't redeem the same code in a race.
+        allow create: if isSignedIn() && request.auth.uid == memberUid &&
+          request.resource.data.uid == memberUid && (
+          (request.resource.data.role == 'admin' &&
+           get(/databases/$(database)/documents/families/$(familyId)).data.createdBy == request.auth.uid)
+          ||
+          (request.resource.data.role == 'member' &&
+           request.resource.data.joinedViaCode is string &&
+           get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.joinedViaCode)).data.familyId == familyId &&
+           get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.joinedViaCode)).data.used == false)
+        );
+
+        // Members can update their own doc (e.g. status, denormalized profile
+        // fields); admins can update anyone's (e.g. role).
+        //
+        // SECURITY (fix 1): `role` is an AUTHORIZATION field — isFamilyAdmin()
+        // reads it back on every later request — so only an existing admin may
+        // change it. The previous form authorized WHO may write without ever
+        // constraining WHAT they wrote, so a plain member could set
+        // role:'admin' on their own doc in a single write and take over the
+        // family (delete it, evict the founder, edit everyone's locations).
+        // The admin branch is evaluated first precisely so transferOwnership()
+        // still works: an admin promotes the successor, then demotes THEMSELF,
+        // and that self-demotion is a role change on their own document.
+        //
+        // `uid` is frozen for everyone: it is enforced on create but was
+        // previously mutable on update, and the collection-group members rule
+        // below trusts `uid` to equal the document ID. Letting it drift lets
+        // one user inject an unreadable phantom family into another user's
+        // "which families am I in" query.
+        allow update: if isFamilyMember(familyId) &&
+          request.resource.data.uid == resource.data.uid &&
+          (
+            isFamilyAdmin(familyId) ||
+            (request.auth.uid == memberUid &&
+             request.resource.data.role == resource.data.role)
+          );
+        // Leaving (self) or being removed by an admin — a plain member cannot remove anyone else.
+        // (fix 4) isSignedIn() is explicit rather than relying on request.auth.uid
+        // erroring out for anonymous callers.
+        allow delete: if isSignedIn() &&
+          (request.auth.uid == memberUid || isFamilyAdmin(familyId));
+      }
+
+      // ---- Saved locations ----
+      match /locations/{locationId} {
+        // Any confirmed family member can see every saved location in the family
+        // (that's the point of the app), but only the owning member — or an
+        // admin, for cleanup — can create/change/remove a given location.
+        allow read: if isFamilyMember(familyId);
+        allow create: if isFamilyMember(familyId) && request.resource.data.ownerUid == request.auth.uid;
+        // SECURITY (fix 3): ownerUid decides who may edit this document, so it
+        // is frozen on update. The authorization check itself was already
+        // correct (it reads resource.data, i.e. the pre-write owner), but
+        // nothing stopped the writer from handing the document to someone else
+        // in the same write — which also lets a member plant a location that
+        // raises risk alerts attributed to another family member by name.
+        allow update: if isFamilyMember(familyId) &&
+          (resource.data.ownerUid == request.auth.uid || isFamilyAdmin(familyId)) &&
+          request.resource.data.ownerUid == resource.data.ownerUid;
+        allow delete: if isFamilyMember(familyId) &&
+          (resource.data.ownerUid == request.auth.uid || isFamilyAdmin(familyId));
+      }
+
+      // NOTE: new family-scoped collections (e.g. Step 4's safety-check docs) need
+      // their own explicit match block here when they're built. Deliberately no
+      // generic /{subcollection}/{docId} catch-all — an earlier draft had one "for
+      // future collections" and it silently overrode the ownership checks above
+      // (Firestore OR-combines every matching rule), letting any family member edit
+      // or delete any other member's location/membership. Caught by the rules test
+      // suite; explicit per-collection rules only, going forward.
+    }
+
+    // ---------------------------------------------------------------------
+    // Collection-group access for members docs: "which families am I in".
+    //
+    // This is a SEPARATE rule from the families/{familyId}/members/{uid} block
+    // above — Firestore requires the recursive-wildcard match form to govern
+    // collection-group queries at all; a fixed-depth match only ever applies
+    // to direct access at that exact path shape. This block only grants
+    // `list`, scoped by resource.data.uid == the caller's own uid, so the only
+    // collection-group query Firestore will actually allow is one filtered to
+    // request.auth.uid via a `where('uid','==', request.auth.uid)` clause —
+    // that's what makes it safe: the query can't be widened to see anyone else.
+    // ---------------------------------------------------------------------
+    match /{path=**}/members/{memberUid} {
+      allow list: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------------------
+    // Invite codes — write-once-use, never listable.
+    //
+    // "get" (fetch by exact code the user typed/scanned) is allowed for any
+    // signed-in user. "list" (query the whole collection) is never allowed,
+    // which is the actual thing that prevents enumeration — Firestore rules
+    // distinguish get vs. list, and omitting "list" denies it by default.
+    // ---------------------------------------------------------------------
+    match /inviteCodes/{code} {
+      allow get: if isSignedIn();
+
+      // Only a family admin can mint a code, and only for their own family.
+      // The code field must echo the document ID (defense in depth: nothing
+      // downstream can end up reading a `code` value that doesn't match how
+      // the doc was actually looked up).
+      allow create: if isSignedIn() &&
+        isFamilyAdmin(request.resource.data.familyId) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.code == code &&
+        request.resource.data.used == false &&
+        request.resource.data.usedBy == null;
+
+      // Two allowed used:false -> used:true transitions, with every other
+      // field left untouched — once used==true, neither condition can ever
+      // match again, which is what makes it write-once either way:
+      //  (a) redemption — whoever is joining marks it used, usedBy := themself.
+      //  (b) revocation — the family admin retires their own unredeemed code
+      //      (e.g. when generating a replacement) without anyone "using" it,
+      //      so usedBy stays null.
+      allow update: if isSignedIn() &&
+        resource.data.used == false &&
+        request.resource.data.used == true &&
+        request.resource.data.familyId == resource.data.familyId &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.code == resource.data.code &&
+        (
+          request.resource.data.usedBy == request.auth.uid ||
+          (isFamilyAdmin(resource.data.familyId) && request.resource.data.usedBy == null)
+        );
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // Default deny — anything not explicitly matched above.
+    // ---------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
