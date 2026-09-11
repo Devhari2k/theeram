@@ -159,7 +159,13 @@ profileSkipBtn.addEventListener('click', async () => {
 function enterApp(){
   accountName.textContent = currentProfile.name;
   if(currentProfile.photoURL){
-    accountAvatar.innerHTML = `<img src="${currentProfile.photoURL}" alt="">`;
+    // Built with DOM APIs rather than interpolated into innerHTML: photoURL
+    // is a stored profile value, and setting .src as a property never parses
+    // it as markup, so there is no attribute to break out of.
+    const img = document.createElement('img');
+    img.src = currentProfile.photoURL;
+    img.alt = '';
+    accountAvatar.replaceChildren(img);
   } else {
     accountAvatar.textContent = (currentProfile.name || '?').trim().charAt(0).toUpperCase();
   }

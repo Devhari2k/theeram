@@ -86,7 +86,7 @@ function render(){
   if(state.myFamilies.length > 1){
     familySwitcher.style.display = 'flex';
     familySwitcher.innerHTML = state.myFamilies.map(f =>
-      `<button class="switcher-pill ${f.id === state.activeFamilyId ? 'active' : ''}" data-fid="${f.id}">${escapeHtml(f.name)}</button>`
+      `<button class="switcher-pill ${f.id === state.activeFamilyId ? 'active' : ''}" data-fid="${escapeHtml(f.id)}">${escapeHtml(f.name)}</button>`
     ).join('');
     familySwitcher.querySelectorAll('[data-fid]').forEach(btn => {
       btn.addEventListener('click', () => Family.setActiveFamily(btn.getAttribute('data-fid')));
@@ -155,21 +155,28 @@ function memberCardHtml(m, myRole){
   const places = state.locations.filter(l => l.ownerUid === m.id);
   const expanded = expandedMemberId === m.id;
   const initial = (m.name || '?').trim().charAt(0).toUpperCase();
-  const avatar = m.photoURL ? `<img src="${m.photoURL}" alt="">` : initial;
-  const status = m.status || 'safe';
+  // m.photoURL is another member's Firestore value landing in an attribute:
+  // unescaped, a quote closes src="" and the rest becomes markup. Escaping
+  // encodes both quote characters, so the value can only ever be a URL.
+  const avatar = m.photoURL ? `<img src="${escapeHtml(m.photoURL)}" alt="">` : escapeHtml(initial);
+  // status is rendered into a class attribute as well as looked up in
+  // STATUS_LABEL; anything outside the known set already displayed as "Safe",
+  // so pin the class to a known key rather than echoing arbitrary input.
+  const status = STATUS_LABEL[m.status] ? m.status : 'safe';
 
   const placesHtml = places.length
     ? places.map(placeMiniHtml).join('')
     : `<div class="no-places-note">No saved places yet.</div>`;
 
+  const mid = escapeHtml(m.id);
   const adminActions = (myRole === 'admin' && !isMe) ? `
     <div class="member-admin-actions">
-      <button class="make-admin-btn" data-uid="${m.id}">Make admin</button>
-      <button class="remove-member-btn danger" data-uid="${m.id}">Remove</button>
+      <button class="make-admin-btn" data-uid="${mid}">Make admin</button>
+      <button class="remove-member-btn danger" data-uid="${mid}">Remove</button>
     </div>` : '';
 
   return `
-    <div class="member-card ${expanded ? 'expanded' : ''}" data-mid="${m.id}">
+    <div class="member-card ${expanded ? 'expanded' : ''}" data-mid="${mid}">
       <div class="member-top">
         <div class="member-avatar">${avatar}</div>
         <div class="member-info">
@@ -187,22 +194,30 @@ function memberCardHtml(m, myRole){
 }
 
 function placeMiniHtml(l){
+  // Unlike the main card, which recomputes risk locally on every load, this
+  // mini view renders the risk/terrain values CACHED IN FIRESTORE — written
+  // there by whichever member's device last refreshed the location. Treat
+  // every one of them as untrusted: level and terrainType as text, and color
+  // as a CSS value inside a style attribute.
   const risk = l.risk || { level: 'Unknown', color: 'var(--text-faint)' };
-  const terrainBit = l.terrainType ? `${l.terrainType}${l.elevation != null ? ' · ~' + Math.round(l.elevation) + 'm' : ''} · ` : '';
+  const riskColor = safeCssColor(risk.color, 'var(--text-faint)');
+  const terrainBit = l.terrainType
+    ? `${escapeHtml(l.terrainType)}${l.elevation != null ? ' · ~' + Math.round(l.elevation) + 'm' : ''} · `
+    : '';
   return `
     <div class="place-mini">
       <div class="place-mini-top">
         <span class="place-mini-name">${escapeHtml(l.name)}</span>
-        <span class="risk-pill" style="background:${risk.color}">${risk.level}</span>
+        <span class="risk-pill" style="background:${escapeHtml(riskColor)}">${escapeHtml(risk.level)}</span>
       </div>
       <div class="place-mini-meta">${terrainBit}Updated ${relTime(l.lastUpdated)}</div>
     </div>
   `;
 }
 
-function escapeHtml(s){
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+// escapeHtml() and safeCssColor() now live in js/escape.js, loaded as a
+// classic script before the inline script in index.html, so the inline
+// script and these modules share one definition instead of a copy each.
 
 document.addEventListener('theeram:familieschanged', (e) => {
   state.myFamilies = e.detail.myFamilies;

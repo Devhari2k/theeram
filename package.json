@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Firestore security rules and their emulator test suite for Theeram.",
   "scripts": {
-    "test:rules": "firebase emulators:exec --only firestore --project demo-theeram \"node --test tests/vuln-demo.test.mjs tests/rules.test.mjs\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-theeram \"node --test tests/vuln-demo.test.mjs tests/rules.test.mjs\"",
+    "test:xss": "node --test tests/xss.test.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.1",
