@@ -42,6 +42,11 @@ function shouldWriteDevice(existing, record, nowMs, maxAgeMs = REFRESH_AFTER_MS)
   return (nowMs - prev) >= maxAgeMs;
 }
 
+function shouldRequestPermission(status) {
+  const receive = status && status.receive;
+  return receive !== 'granted';
+}
+
 function deviceFieldPath(key) {
   if (!/^[0-9a-f]{64}$/.test(String(key))) {
     throw new Error('deviceFieldPath: expected a sha256 hex key');
@@ -163,6 +168,44 @@ describe('shouldWriteDevice', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('shouldRequestPermission', () => {
+  // Regression guard for the real-device failure: the app never showed the
+  // notification prompt and the only way to grant it was Android Settings.
+  // The old logic asked only when the state was exactly 'prompt', so once
+  // Capacitor had cached any other state the app went permanently silent.
+
+  test('does NOT ask when already granted', () => {
+    assert.equal(shouldRequestPermission({ receive: 'granted' }), false);
+  });
+
+  test('asks on a fresh install (prompt)', () => {
+    assert.equal(shouldRequestPermission({ receive: 'prompt' }), true);
+  });
+
+  test('asks when a rationale should be shown', () => {
+    assert.equal(shouldRequestPermission({ receive: 'prompt-with-rationale' }), true);
+  });
+
+  test('REGRESSION: still asks when Capacitor reports a cached "denied"', () => {
+    // This is the case the previous build fell through — it never asked
+    // again, leaving Android Settings as the only route.
+    assert.equal(shouldRequestPermission({ receive: 'denied' }), true);
+  });
+
+  test('asks for any unexpected or missing state rather than going silent', () => {
+    for (const s of [{}, { receive: undefined }, { receive: 'unknown' }, null, undefined]) {
+      assert.equal(shouldRequestPermission(s), true, `should ask for ${JSON.stringify(s)}`);
+    }
+  });
+
+  test('only an exact "granted" suppresses the prompt', () => {
+    for (const s of ['Granted', 'GRANTED', ' granted', 'granted ']) {
+      assert.equal(shouldRequestPermission({ receive: s }), true, `must not match ${JSON.stringify(s)}`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('deviceFieldPath', () => {
   test('builds a dotted path under devices', async () => {
     const key = await deviceKeyFromToken(TOKEN);
@@ -188,6 +231,7 @@ describe('source guards', () => {
       'export async function deviceKeyFromToken(token) {',
       'export function buildDeviceRecord({ token, platform = PLATFORM, existing = null, nowIso }) {',
       'export function shouldWriteDevice(existing, record, nowMs, maxAgeMs = REFRESH_AFTER_MS) {',
+      'export function shouldRequestPermission(status) {',
       'export function deviceFieldPath(key) {'
     ]) {
       assert.ok(SRC.includes(sig), `signature drifted: ${sig}`);
@@ -228,6 +272,42 @@ describe('source guards', () => {
                      'service_account', 'private_key', 'messages:send']) {
       assert.ok(!SRC.includes(f), `push.js must not contain ${f}`);
     }
+  });
+
+  test('registration is driven by onAuthStateChanged, not a cross-module event', () => {
+    // theeram:authready is dispatched by auth.js, which loads BEFORE push.js.
+    // Hanging registration off it alone was a race that could silently skip
+    // the permission prompt for the life of an install. onAuthStateChanged
+    // replays current state to a listener however late it is added.
+    assert.ok(SRC.includes('onAuthStateChanged(auth, (user) =>'),
+      'must subscribe to auth state directly');
+    assert.ok(!SRC.includes("addEventListener('theeram:authready'"),
+      'must no longer depend on the authready event for registration');
+  });
+
+  test('registration is retried after the profile is created and on resume', () => {
+    assert.ok(SRC.includes("addEventListener('theeram:profilesaved'"),
+      'a new user registers once their profile document exists');
+    assert.ok(SRC.includes("addEventListener('visibilitychange'"),
+      'returning to the app retries registration');
+  });
+
+  test('a missing profile document defers instead of creating a partial one', () => {
+    // Creating users/{uid} with only devices would make auth.js skip the
+    // profile gate for a brand-new user.
+    assert.ok(SRC.includes('if (!snap.exists())'), 'must check existence first');
+    assert.ok(SRC.includes('pushState.pendingProfile = true'));
+  });
+
+  test('the permission prompt is asked at most once per app session', () => {
+    assert.ok(SRC.includes('permissionRequestedThisSession'),
+      'a refusal must not re-prompt on every retry trigger');
+  });
+
+  test('failures are diagnosable rather than silent', () => {
+    assert.ok(SRC.includes('diagnose()'), 'must expose a diagnose() helper');
+    assert.ok(SRC.includes("console.log('[push] checkPermissions ->'"),
+      'must log the permission state it observed');
   });
 
   test('degrades to a no-op without the Capacitor bridge', () => {

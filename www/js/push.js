@@ -32,6 +32,7 @@
 // so the web build keeps working unchanged.
 
 import { auth, db } from './firebase-init.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js';
 import {
   doc, getDoc, setDoc, updateDoc, deleteField
 } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js';
@@ -85,6 +86,26 @@ export function shouldWriteDevice(existing, record, nowMs, maxAgeMs = REFRESH_AF
   return (nowMs - prev) >= maxAgeMs;
 }
 
+/**
+ * Whether initPush() should call requestPermissions() for this status.
+ *
+ * The rule is simply "anything that is not granted". The earlier version only
+ * requested when the state was exactly 'prompt', which left a dead end:
+ * Capacitor's Bridge.getPermissionStates() reports PROMPT only while no state
+ * has ever been cached, and once a 'denied' has been written to its
+ * PERMISSION_PREFS the state is returned verbatim from then on. A single
+ * missed or dismissed first attempt therefore meant the app never asked
+ * again, and the only route left was Android Settings — exactly the symptom
+ * reported from the device.
+ *
+ * Asking when the OS has permanently denied is harmless: requestPermissions()
+ * resolves without showing anything.
+ */
+export function shouldRequestPermission(status) {
+  const receive = status && status.receive;
+  return receive !== 'granted';
+}
+
 /** Dotted path addressing one device inside the profile document. */
 export function deviceFieldPath(key) {
   if (!/^[0-9a-f]{64}$/.test(String(key))) {
@@ -116,12 +137,17 @@ export const pushState = {
   permission: 'unknown',   // 'granted' | 'denied' | 'prompt' | 'unknown'
   registered: false,
   token: null,
+  pendingProfile: false,
   error: null
 };
 
 let listenersBound = false;
 let currentUid = null;
 let currentKey = null;
+// One permission prompt per app run. Retry triggers (profile saved, app
+// resumed) must not re-prompt within the same session after a refusal.
+let permissionRequestedThisSession = false;
+let lastToken = null;
 
 function emit() {
   document.dispatchEvent(new CustomEvent('theeram:pushstatechanged', {
@@ -137,7 +163,19 @@ async function upsertDevice(uid, token) {
   const key = await deviceKeyFromToken(token);
   const ref = doc(db, 'users', uid);
   const snap = await getDoc(ref);
-  const existing = snap.exists() ? ((snap.data().devices || {})[key] || null) : null;
+
+  // The profile document must already exist. Writing devices into a missing
+  // one would CREATE it, and auth.js decides whether to show the profile gate
+  // with snap.exists() — a half-made document would send a brand-new user
+  // straight into the app with no name. Registration is retried on
+  // theeram:profilesaved instead.
+  if (!snap.exists()) {
+    pushState.pendingProfile = true;
+    return { key, written: false, deferred: true };
+  }
+  pushState.pendingProfile = false;
+
+  const existing = (snap.data().devices || {})[key] || null;
   const record = buildDeviceRecord({ token, existing, nowIso: new Date().toISOString() });
 
   if (!shouldWriteDevice(existing, record, Date.now())) return { key, written: false };
@@ -190,6 +228,7 @@ function bindListeners(plugin) {
     const token = tokenEvent && tokenEvent.value;
     if (!token) return;
     pushState.token = token;
+    lastToken = token;
     pushState.error = null;
     try {
       const uid = auth.currentUser && auth.currentUser.uid;
@@ -244,21 +283,35 @@ export async function initPush() {
     bindListeners(plugin);
 
     let status = await plugin.checkPermissions();
-    if (status.receive === 'prompt' || status.receive === 'prompt-with-rationale') {
-      status = await plugin.requestPermissions();
-    }
-    pushState.permission = status.receive;
+    pushState.permission = status && status.receive;
+    console.log('[push] checkPermissions ->', pushState.permission);
 
-    if (status.receive !== 'granted') {
-      // Denied is a legitimate end state, not an error to retry around. The
-      // app must not imply alerts are working when they are not.
+    if (shouldRequestPermission(status)) {
+      // Ask whenever it is not already granted — see shouldRequestPermission().
+      // Once per app session, so a denial does not re-prompt on every retry
+      // trigger (resume, profile save) within the same run.
+      if (permissionRequestedThisSession) {
+        console.log('[push] already asked this session; not re-prompting');
+        emit();
+        return false;
+      }
+      permissionRequestedThisSession = true;
+      console.log('[push] requesting notification permission…');
+      status = await plugin.requestPermissions();
+      pushState.permission = status && status.receive;
+      console.log('[push] requestPermissions ->', pushState.permission);
+    }
+
+    if (!status || status.receive !== 'granted') {
+      // A legitimate end state, not an error to retry around. The app must
+      // never imply alerts are working when they are not.
       pushState.registered = false;
-      console.log('[push] notification permission not granted:', status.receive);
       emit();
       return false;
     }
 
     await plugin.register();   // resolves immediately; 'registration' fires later
+    console.log('[push] register() called; awaiting registration event');
     emit();
     return true;
   } catch (err) {
@@ -273,22 +326,79 @@ export async function initPush() {
 // Wiring
 // ---------------------------------------------------------------------------
 
-document.addEventListener('theeram:authready', (e) => {
-  currentUid = (e.detail && e.detail.user && e.detail.user.uid) || null;
+// Registration must not hang off a single cross-module event. push.js is a
+// deferred module loaded after auth.js, so if theeram:authready were ever
+// dispatched before this file finished evaluating, the listener would miss it
+// and nothing would ever ask for permission — silently, for the life of the
+// install. onAuthStateChanged has no such race: Firebase replays the current
+// state to every listener as soon as it is added, however late.
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    currentUid = null;
+    currentKey = null;
+    lastToken = null;
+    pushState.registered = false;
+    pushState.token = null;
+    emit();
+    return;
+  }
+  currentUid = user.uid;
+  // upsertDevice() defers if the profile document does not exist yet; the
+  // profilesaved listener below picks it up.
   initPush();
 });
 
-// Sign-out cleanup is driven from auth.js, which awaits unregisterDevice()
-// before calling signOut() — see the comment on unregisterDevice().
-document.addEventListener('theeram:signedout', () => {
-  currentUid = null;
-  currentKey = null;
-  pushState.registered = false;
-  pushState.token = null;
-  emit();
-});
+// A brand-new user reaches the profile gate before a profile document exists,
+// so the first registration attempt defers. Retry the moment it is created.
+document.addEventListener('theeram:profilesaved', () => { retryRegistration(); });
+
+// Recovery path. Covers the case that prompted this fix: someone who granted
+// the permission in Android Settings rather than through the app comes back to
+// a foregrounded WebView, and registration should then simply proceed.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') retryRegistration();
+  });
+}
+
+/** Idempotent: re-runs only what is still outstanding. */
+async function retryRegistration() {
+  if (!currentUid) return;
+  if (pushState.registered && !pushState.pendingProfile) return;
+  // A token already in hand just needs storing — no need to re-register.
+  if (lastToken) {
+    try {
+      const { key } = await upsertDevice(currentUid, lastToken);
+      if (!pushState.pendingProfile) { currentKey = key; pushState.registered = true; emit(); }
+      return;
+    } catch (err) {
+      console.warn('[push] retry store failed:', err && err.message);
+    }
+  }
+  initPush();
+}
 
 // Exposed for the inline script and for manual checks from a device console.
+// theeramPush.diagnose() prints why registration has not completed — the
+// previous build failed silently on a real device, which is what made this
+// hard to pin down.
 if (typeof window !== 'undefined') {
-  window.theeramPush = { initPush, unregisterDevice, isSupported, pushState };
+  window.theeramPush = {
+    initPush, unregisterDevice, isSupported, pushState, retryRegistration,
+    diagnose() {
+      const d = {
+        bridgePresent: !!(window.Capacitor && window.Capacitor.Plugins),
+        pluginPresent: !!pushPlugin(),
+        signedIn: !!(auth.currentUser && auth.currentUser.uid),
+        profileExists: !pushState.pendingProfile,
+        permission: pushState.permission,
+        registered: pushState.registered,
+        hasToken: !!pushState.token,
+        askedThisSession: permissionRequestedThisSession,
+        error: pushState.error
+      };
+      console.log('[push] diagnose:', JSON.stringify(d, null, 2));
+      return d;
+    }
+  };
 }
