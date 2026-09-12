@@ -328,7 +328,7 @@ export function createNotifier({ getMessaging, dryRun = false, logger = console 
   return {
     dryRun: false,
     async sendEach(messages) {
-      if (!messaging) messaging = getMessaging();
+      if (!messaging) messaging = await getMessaging();
 
       if (typeof messaging.sendEach === 'function') {
         return messaging.sendEach(messages);
