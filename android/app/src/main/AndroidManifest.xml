@@ -38,4 +38,14 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 13 (API 33) and above require an explicit runtime grant before
+         an app may post a notification. The Capacitor plugin requests it at
+         runtime, but the request only reaches the user if the permission is
+         declared here; targetSdk is 36, so without this line the prompt never
+         appears and every push is silently dropped.
+         The FirebaseMessagingService is contributed by the plugin's own
+         manifest and is merged automatically — it is deliberately not
+         duplicated here. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

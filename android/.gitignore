@@ -62,7 +62,16 @@ captures/
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# Kept OUT of version control deliberately. Nothing in it is a secret — the
+# Android API key is a public client identifier, the same class as the web key
+# already in www/js/firebase-init.js — but this repository is public and there
+# is no reason to publish the project's Android client details. Nothing in CI
+# builds the APK (the only workflow runs the flood monitor), so ignoring it
+# costs no automation. Obtain it from:
+#   Firebase Console → theeram-18e35 → Project settings → Your apps
+#   → Android app com.theeram.app → google-services.json
+# and place it at android/app/google-services.json before building.
+google-services.json
 
 # Freeline
 freeline.py

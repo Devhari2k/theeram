@@ -1393,5 +1393,9 @@ if('serviceWorker' in navigator){
 </script>
 <script type="module" src="js/auth.js"></script>
 <script type="module" src="js/family-ui.js"></script>
+<!-- FCM token registration. Listens for theeram:authready, so it must load
+     after auth.js dispatches it; module scripts run in document order.
+     No-ops in a plain browser where the Capacitor bridge is absent. -->
+<script type="module" src="js/push.js"></script>
 </body>
 </html>
