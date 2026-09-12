@@ -375,7 +375,9 @@ export async function notifyUndelivered(deps) {
     leaseMs = CLAIM_LEASE_MS,
     limit = MAX_DECISIONS_PER_RUN,
     maxAttempts = MAX_DELIVERY_ATTEMPTS,
-    maxAgeMs = MAX_DECISION_AGE_MS
+    maxAgeMs = MAX_DECISION_AGE_MS,
+    // Never set by the production monitor. See the filter below.
+    restrictToUid = null
   } = deps;
 
   const summary = {
@@ -448,6 +450,10 @@ export async function notifyUndelivered(deps) {
           logger.warn('[notify] skipping a member whose id is not a usable ledger key');
           return false;
         });
+        // Development safety valve, unset in production: confines a pass to a
+        // single named recipient so a synthetic test decision can never fan
+        // out to the rest of a real family.
+        if (restrictToUid) memberUids = memberUids.filter(uid => uid === restrictToUid);
       } catch (err) {
         logger.warn(`[notify] could not read members of ${familyId}: ${String(err && err.message || err)}`);
         memberUids = null;
@@ -513,10 +519,10 @@ export async function notifyUndelivered(deps) {
 
   const successByDecision = new Map();   // decisionId -> device success count
   const failureByDecision = new Map();
-  const recipientOk = new Set();         // `${decisionId} ${uid}`
+  const recipientOk = new Set();         // `${decisionId}|${uid}`
   const recipientCode = new Map();       // same key -> last failure code seen
   const toRemove = [];                   // {uid, deviceKey}
-  const rkey = (id, uid) => `${id} ${uid}`;
+  const rkey = (id, uid) => `${id}|${uid}`;
 
   for (const batch of chunk(messages, FCM_BATCH_LIMIT)) {
     let res;

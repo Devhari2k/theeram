@@ -1,0 +1,119 @@
+# Synthetic FCM delivery test — MANUAL ONLY.
+#
+# Sends one real flood-alert notification to one named test device so the
+# end-to-end path (Firestore -> sender -> FCM -> handset) can be exercised
+# without waiting for real rainfall.
+#
+# There is deliberately no `schedule` trigger here. This workflow runs only
+# when a human dispatches it, and only after typing the confirmation word.
+# The hourly Flood monitor workflow is untouched and never invokes this.
+#
+# Delivery is confined to the uid given below by the sender's restrictToUid
+# option, so no other member of that family can receive a synthetic alert.
+
+name: Synthetic FCM test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SEND to confirm a real notification will be delivered'
+        required: true
+        type: string
+      uid:
+        description: 'Test recipient uid (must be a member of the family below)'
+        required: true
+        type: string
+      family_id:
+        description: 'Family id owning the location'
+        required: true
+        type: string
+      location_id:
+        description: 'Saved location id to name in the alert'
+        required: true
+        type: string
+      level:
+        description: 'Risk level to simulate'
+        type: choice
+        options: ['Severe', 'High']
+        default: 'Severe'
+
+permissions:
+  contents: read
+  id-token: write
+
+# Never let two synthetic tests interleave, and never let one run alongside
+# the hourly pass — a shared claim lease is easier to reason about serialised.
+concurrency:
+  group: flood-monitor
+  cancel-in-progress: false
+
+jobs:
+  synthetic:
+    name: Send one synthetic alert
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Require explicit confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "SEND" ]; then
+            echo "::error::confirm must be exactly SEND. Nothing was sent."
+            exit 1
+          fi
+          echo "Confirmed by ${{ github.actor }}."
+
+      - name: Check required configuration
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          missing=0
+          [ -z "$WIF_PROVIDER" ]    && echo "::error::GCP_WIF_PROVIDER is not set"    && missing=1
+          [ -z "$SERVICE_ACCOUNT" ] && echo "::error::GCP_SERVICE_ACCOUNT is not set" && missing=1
+          if [ "$missing" = "1" ]; then
+            echo "See monitor/SCHEDULER.md for the one-time setup."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci --omit=dev
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: theeram-18e35
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
+      # Inputs go through the environment, not string-interpolated into the
+      # shell command, so a crafted input cannot become shell syntax.
+      - name: Send synthetic alert
+        env:
+          THEERAM_TEST_UID: ${{ inputs.uid }}
+          THEERAM_TEST_FAMILY: ${{ inputs.family_id }}
+          THEERAM_TEST_LOCATION: ${{ inputs.location_id }}
+          LEVEL: ${{ inputs.level }}
+        run: node monitor/test-fcm.js --production --confirm --level="$LEVEL"
+
+      - name: What to check on the handset
+        if: always()
+        run: |
+          {
+            echo "### Synthetic FCM test"
+            echo ""
+            echo "A green job means **FCM accepted** the message. It does not prove the"
+            echo "phone displayed it. Confirm on the handset:"
+            echo ""
+            echo "- [ ] A notification appeared"
+            echo "- [ ] It is filed under the **Flood alerts** channel"
+            echo "- [ ] Tapping it opens Theeram"
+          } >> "$GITHUB_STEP_SUMMARY"

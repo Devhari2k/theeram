@@ -14,6 +14,7 @@ import {
   FCM_BATCH_LIMIT, CLAIM_LEASE_MS,
   MAX_DELIVERY_ATTEMPTS, MAX_DECISION_AGE_MS
 } from '../monitor/notify.js';
+import { parseArgs, validate, syntheticDecisionId, SYNTHETIC_PREFIX } from '../monitor/test-fcm.js';
 
 const KEY_A = 'a'.repeat(64);
 const KEY_B = 'b'.repeat(64);
@@ -481,5 +482,38 @@ describe('retirementReason', () => {
   test('thresholds are overridable for testing', () => {
     assert.equal(retirementReason({ decidedAt: decided }, T0, 2, { maxAttempts: 2 }), 'exhausted');
     assert.equal(retirementReason({ decidedAt: decided }, T0 + 10, 1, { maxAgeMs: 5 }), 'stale');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('synthetic FCM test harness', () => {
+  test('refuses to run without --confirm', () => {
+    const a = parseArgs(['--production', '--uid=u1', '--family=f1', '--location=l1']);
+    assert.ok(validate(a).some(p => /--confirm is required/.test(p)));
+  });
+
+  test('refuses without a target uid, family and location', () => {
+    const problems = validate(parseArgs(['--production', '--confirm']));
+    assert.equal(problems.length, 3, problems.join('; '));
+  });
+
+  test('accepts a fully specified invocation', () => {
+    const a = parseArgs(['--production', '--confirm', '--uid=u1', '--family=f1', '--location=l1']);
+    assert.deepEqual(validate(a), []);
+    assert.equal(a.uid, 'u1');
+    assert.equal(a.familyId, 'f1');
+    assert.equal(a.locationId, 'l1');
+    assert.equal(a.level, 'Severe');
+  });
+
+  test('refuses a level the risk model does not alert on', () => {
+    const a = parseArgs(['--confirm', '--uid=u1', '--family=f1', '--location=l1', '--level=Low']);
+    assert.ok(validate(a).some(p => /--level must be/.test(p)));
+  });
+
+  test('the decision id is unmistakably synthetic', () => {
+    const id = syntheticDecisionId('loc1', `${SYNTHETIC_PREFIX}123`, 'Severe');
+    assert.equal(id, 'loc1__TEST_FCM_123__first__Severe');
+    assert.ok(id.includes(SYNTHETIC_PREFIX), 'greppable in Firestore');
   });
 });

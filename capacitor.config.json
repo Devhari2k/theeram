@@ -5,5 +5,10 @@
 	"backgroundColor": "#0B2027",
 	"server": {
 		"androidScheme": "https"
+	},
+	"plugins": {
+		"PushNotifications": {
+			"presentationOptions": ["alert", "badge", "sound"]
+		}
 	}
 }

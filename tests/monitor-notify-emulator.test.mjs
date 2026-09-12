@@ -597,3 +597,45 @@ describe('retirement', () => {
     assert.equal(d.retiredReason, undefined);
   });
 });
+
+// ---------------------------------------------------------------------------
+// restrictToUid: the safety valve the synthetic FCM test relies on.
+describe('restrictToUid', () => {
+  test('confines delivery to one member of a multi-member family', async () => {
+    await seed({
+      decisions: [{ id: 'd1' }],
+      members: ['u1', 'u2', 'u3'],
+      devices: { u1: [KEY_A], u2: [KEY_B], u3: [KEY_A] }
+    });
+    const n = fakeNotifier();
+    const s = await run(n, { restrictToUid: 'u2' });
+
+    assert.equal(n.sent.length, 1, 'exactly one message left the building');
+    assert.ok(n.sent[0].token.startsWith('tok-u2'), 'and it went to the named uid');
+    assert.equal(s.recipients, 1);
+
+    const d = await readDec('d1');
+    assert.equal(d.recipients.u2.delivered, true);
+    assert.equal(d.recipients.u1, undefined, 'untargeted members are not even ledgered');
+    assert.equal(d.recipients.u3, undefined);
+  });
+
+  test('an unset restrictToUid leaves production fan-out untouched', async () => {
+    await seed({
+      decisions: [{ id: 'd1' }],
+      members: ['u1', 'u2'],
+      devices: { u1: [KEY_A], u2: [KEY_B] }
+    });
+    const n = fakeNotifier();
+    await run(n);
+    assert.equal(n.sent.length, 2, 'normal runs still reach the whole family');
+  });
+
+  test('a uid that is not a member reaches nobody', async () => {
+    await seed({ decisions: [{ id: 'd1' }], members: ['u1'], devices: { u1: [KEY_A] } });
+    const n = fakeNotifier();
+    const s = await run(n, { restrictToUid: 'not-a-member' });
+    assert.equal(n.sent.length, 0, 'fails closed rather than notifying somebody else');
+    assert.equal(s.sent, 0);
+  });
+});

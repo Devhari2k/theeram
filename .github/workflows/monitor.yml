@@ -1,8 +1,11 @@
 # Hourly flood-risk monitoring pass.
 #
 # Runs monitor/index.js against the live Firestore project. It computes risk
-# for every saved location, writes changed values back, and RECORDS alert
-# decisions. It does NOT notify anyone — there is no FCM in this phase.
+# for every saved location, writes changed values back, records alert
+# decisions, and delivers them to registered devices over FCM.
+#
+# Synthetic test alerts are NOT sent from here — that is fcm-test.yml, which
+# is manual-dispatch only.
 #
 # Authentication is Workload Identity Federation: GitHub mints a short-lived
 # OIDC token, Google exchanges it for a short-lived access token. No

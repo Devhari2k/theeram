@@ -13,7 +13,8 @@
     "test:monitor": "node --test tests/monitor-alerts.test.mjs tests/monitor-grid.test.mjs tests/monitor-notify.test.mjs",
     "test:monitor:emulator": "firebase emulators:exec --only firestore --project demo-theeram \"node --test tests/monitor-run.test.mjs tests/monitor-notify-emulator.test.mjs\"",
     "monitor:dry": "node monitor/index.js --dry-run",
-    "monitor": "node monitor/index.js"
+    "monitor": "node monitor/index.js",
+    "test:fcm": "node monitor/test-fcm.js --production"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.1",
