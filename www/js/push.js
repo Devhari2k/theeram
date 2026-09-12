@@ -131,6 +131,64 @@ export function isSupported() {
   return !!pushPlugin();
 }
 
+// ---------------------------------------------------------------------------
+// Android notification channel
+// ---------------------------------------------------------------------------
+
+// The server sends android.notification.channelId = this. It must exist before
+// the first notification arrives, or FCM falls back to its auto-created
+// "Miscellaneous" channel at IMPORTANCE_DEFAULT — the alert would land quietly
+// in the tray under a meaningless heading. Note that the `priority: 'high'` the
+// server sets governs FCM *transport* (waking the device from Doze); heads-up
+// display, sound and lock-screen behaviour come from the channel alone.
+export const FLOOD_CHANNEL_ID = 'theeram-flood-alerts';
+
+export const FLOOD_CHANNEL = {
+  id: FLOOD_CHANNEL_ID,
+  // Name and description are shown verbatim in Android notification settings,
+  // so they are written for the person reading them there.
+  name: 'Flood alerts',
+  description: 'Urgent rainfall and flood risk alerts for your saved places. '
+    + 'These are rainfall-based estimates, not official forecasts.',
+  importance: 5,    // IMPORTANCE_HIGH — heads-up. Fixed at creation; see below.
+  visibility: 1,    // VISIBILITY_PUBLIC — a 3am alert is useless if the lock screen hides it.
+  vibration: true,
+  lights: true
+};
+
+function isAndroid() {
+  return typeof window !== 'undefined' && window.Capacitor
+    && typeof window.Capacitor.getPlatform === 'function'
+    && window.Capacitor.getPlatform() === 'android';
+}
+
+let channelEnsured = false;
+
+/**
+ * Create the flood-alert channel. Android only, and safe to call repeatedly:
+ * a module flag short-circuits within a session, and Android's own
+ * createNotificationChannel is a no-op for an id that already exists.
+ *
+ * Importance cannot be RAISED after creation — only the user can, in Settings —
+ * so this must be right the first time rather than tightened later.
+ *
+ * Never throws: a missing channel degrades the alert, it must not break sign-in.
+ */
+export async function ensureFloodChannel() {
+  if (channelEnsured) return true;
+  const plugin = pushPlugin();
+  if (!plugin || !isAndroid() || typeof plugin.createChannel !== 'function') return false;
+  try {
+    await plugin.createChannel({ ...FLOOD_CHANNEL });
+    channelEnsured = true;
+    console.log('[push] notification channel ready:', FLOOD_CHANNEL_ID);
+    return true;
+  } catch (err) {
+    console.warn('[push] could not create notification channel:', String(err && err.message || err));
+    return false;
+  }
+}
+
 // Last known state, surfaced for UI that wants to tell the user alerts are off.
 export const pushState = {
   supported: false,
@@ -282,6 +340,11 @@ export async function initPush() {
   try {
     bindListeners(plugin);
 
+    // Before the permission branch on purpose. Creating a channel needs no
+    // permission, and a user who denies in-app but later enables alerts from
+    // Android Settings must still find a properly configured channel waiting.
+    await ensureFloodChannel();
+
     let status = await plugin.checkPermissions();
     pushState.permission = status && status.receive;
     console.log('[push] checkPermissions ->', pushState.permission);
@@ -385,7 +448,20 @@ async function retryRegistration() {
 if (typeof window !== 'undefined') {
   window.theeramPush = {
     initPush, unregisterDevice, isSupported, pushState, retryRegistration,
-    diagnose() {
+    ensureFloodChannel, FLOOD_CHANNEL_ID,
+    async diagnose() {
+      const plugin = pushPlugin();
+      // Read the channel back from Android rather than trusting our own flag:
+      // what matters is what the OS actually holds, importance included.
+      let channel = null;
+      try {
+        if (plugin && typeof plugin.listChannels === 'function' && isAndroid()) {
+          const { channels } = await plugin.listChannels();
+          channel = (channels || []).find(c => c.id === FLOOD_CHANNEL_ID) || 'MISSING';
+        }
+      } catch (err) {
+        channel = `ERROR: ${String(err && err.message || err)}`;
+      }
       const d = {
         bridgePresent: !!(window.Capacitor && window.Capacitor.Plugins),
         pluginPresent: !!pushPlugin(),
@@ -395,6 +471,7 @@ if (typeof window !== 'undefined') {
         registered: pushState.registered,
         hasToken: !!pushState.token,
         askedThisSession: permissionRequestedThisSession,
+        floodChannel: channel,
         error: pushState.error
       };
       console.log('[push] diagnose:', JSON.stringify(d, null, 2));

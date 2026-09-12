@@ -11,6 +11,7 @@
 
 import { resolveTarget, initAdmin } from './admin.js';
 import { createWeatherClient } from './weather.js';
+import { createNotifier } from './notify.js';
 import { runOnce } from './run.js';
 
 function parseArgs(argv) {
@@ -35,7 +36,14 @@ async function main() {
   const db = initAdmin(target);
   const weather = createWeatherClient();
 
-  const summary = await runOnce({ db, weather, dryRun: args.dryRun });
+  // In dry-run the live Messaging object is never constructed: createNotifier
+  // does not call getMessaging at all on that path.
+  const notifier = createNotifier({
+    dryRun: args.dryRun,
+    getMessaging: async () => (await import('firebase-admin/messaging')).getMessaging()
+  });
+
+  const summary = await runOnce({ db, weather, dryRun: args.dryRun, notifier });
 
   if (args.json) {
     console.log(JSON.stringify(summary, null, 2));
@@ -58,6 +66,11 @@ async function main() {
       console.log(`[monitor] DRY RUN — ${summary.decisions.length} alert decision(s), 0 sent`);
       for (const d of summary.decisions) {
         console.log(`  ${d.kind} -> ${d.level} (episode ${d.episodeId})`);
+      }
+      if (summary.notifications) {
+        const n = summary.notifications;
+        console.log(`[monitor] DRY RUN — delivery: considered=${n.considered} claimable=${n.claimed} ` +
+                    `recipients=${n.recipients} devices=${n.devices}, 0 notifications sent`);
       }
     }
   }
