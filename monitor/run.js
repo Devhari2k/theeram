@@ -7,6 +7,7 @@
 import { computeRisk, summarizeRainfall, classifyTerrain } from '../www/js/risk.js';
 import { groupByCell, DEFAULT_PRECISION } from './grid.js';
 import { decide, decisionId } from './alerts.js';
+import { notifyUndelivered } from './notify.js';
 import { assertServerOnly } from './fields.js';
 
 export const HEARTBEAT_PATH = { collection: 'system', doc: 'monitorHeartbeat' };
@@ -46,7 +47,10 @@ export async function runOnce(deps) {
     logger = console,
     dryRun = false,
     precision = DEFAULT_PRECISION,
-    alertConfig = {}
+    alertConfig = {},
+    // Optional. Absent (the default) means detection only, exactly as before.
+    notifier = null,
+    runId = `run-${Date.now()}`
   } = deps;
 
   const startedAt = now();
@@ -157,6 +161,22 @@ export async function runOnce(deps) {
     }
   }
 
+  // ---- 4.5 deliver notifications -----------------------------------------
+  // Strictly after the detection phase, and driven by Firestore rather than by
+  // `summary.decisions`, so a decision recorded by an earlier crashed run is
+  // picked up too. Optional: with no notifier the monitor behaves exactly as
+  // it did before this phase existed.
+  if (notifier) {
+    try {
+      const n = await notifyUndelivered({ db, notifier, now, logger, runId, dryRun });
+      summary.notifications = n;
+    } catch (err) {
+      // Delivery must never take the monitoring pass down with it.
+      summary.notificationError = String(err && err.message || err);
+      logger.warn(`[monitor] notification phase failed: ${summary.notificationError}`);
+    }
+  }
+
   // ---- 5. heartbeat -------------------------------------------------------
   const finishedAt = now();
   summary.durationMs = finishedAt - startedAt;
@@ -173,6 +193,11 @@ export async function runOnce(deps) {
     unchanged: summary.unchanged,
     weatherFailures: summary.weatherFailures,
     locationFailures: summary.locationFailures,
+    notificationsSent: summary.notifications ? summary.notifications.sent : 0,
+    notificationFailures: summary.notifications ? summary.notifications.failures : 0,
+    decisionsDelivered: summary.notifications ? summary.notifications.delivered : 0,
+    // Non-zero means somebody was never reached. Worth watching.
+    decisionsRetired: summary.notifications ? summary.notifications.retired : 0,
     dryRun
   };
   summary.heartbeat = heartbeat;
