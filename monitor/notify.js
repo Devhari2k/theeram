@@ -539,6 +539,9 @@ export async function notifyUndelivered(deps) {
     const responses = (res && res.responses) || [];
     batch.forEach((m, i) => {
       const r = responses[i] || { success: false };
+      if (!r.success) {
+        logger.warn(`[notify] FCM send error: ${String(r.error && (r.error.message || r.error.code) || r.error || 'unknown error')}`);
+      }
       if (r.success) {
         summary.sent++;
         for (const id of m._meta.decisionIds) {
