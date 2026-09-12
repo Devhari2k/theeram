@@ -329,7 +329,27 @@ export function createNotifier({ getMessaging, dryRun = false, logger = console 
     dryRun: false,
     async sendEach(messages) {
       if (!messaging) messaging = getMessaging();
-      return messaging.sendEach(messages);
+
+      if (typeof messaging.sendEach === 'function') {
+        return messaging.sendEach(messages);
+      }
+
+      const responses = await Promise.all(
+        messages.map(async (message) => {
+          try {
+            const messageId = await messaging.send(message);
+            return { success: true, messageId };
+          } catch (error) {
+            return { success: false, error };
+          }
+        })
+      );
+
+      return {
+        successCount: responses.filter((r) => r.success).length,
+        failureCount: responses.filter((r) => !r.success).length,
+        responses
+      };
     }
   };
 }
