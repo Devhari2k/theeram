@@ -56,7 +56,17 @@ export function createWeatherClient(opts = {}) {
         const payload = await getJson(withCoords(buildForecastUrl(0, 0), batch));
         const results = asArray(payload, batch.length);
         results.forEach((r, i) => {
-          if (r && r.hourly) hourly.set(batch[i].key, r.hourly);
+          // utc_offset_seconds travels WITH the hourly series: the labels in
+          // it are in the location's local time, and each cell in a batch can
+          // be in a different zone. Without it summarizeRainfall would fall
+          // back to reading those labels as UTC and anchor the window on the
+          // wrong hour.
+          if (r && r.hourly) {
+            hourly.set(batch[i].key, {
+              ...r.hourly,
+              utc_offset_seconds: r.utc_offset_seconds
+            });
+          }
         });
       } catch (err) {
         failures.push({ cells: batch.map(c => c.key), error: String(err && err.message || err) });

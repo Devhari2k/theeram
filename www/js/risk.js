@@ -73,18 +73,47 @@ function computeRisk(rain){
 
 function isHighOrExtreme(level){ return level === 'High' || level === 'Severe'; }
 
+// Resolve one Open-Meteo hourly label to a true UTC instant.
+//
+// With `timezone=auto` the API labels every hour in the LOCATION's local time
+// and carries no zone designator — "2026-09-13T04:00". `new Date()` parses a
+// string like that in the RUNTIME's zone, which is a different zone entirely:
+// UTC on a GitHub Actions runner, IST in the app on a phone in Kerala. The
+// anchor therefore landed on the wrong hour by exactly the difference between
+// the two, silently shifting the whole 24/48/72h window.
+//
+// The response's own `utc_offset_seconds` is the only trustworthy source for
+// that location's offset, so the instant is reconstructed from it rather than
+// from whatever zone this code happens to be running in. Labels that already
+// carry a zone (a trailing Z or ±HH:MM) are unambiguous and pass through.
+function hourInstantMs(label, utcOffsetSeconds){
+  const s = String(label);
+  if(/(?:Z|[+-]\d{2}:?\d{2})$/.test(s)) return Date.parse(s);
+  return Date.parse(s + 'Z') - utcOffsetSeconds * 1000;
+}
+
 // The aggregation half of the former fetchRainfall(): everything after the
 // network call. Takes Open-Meteo's `hourly` object ({ time, precipitation }).
 // `nowInput` exists only so tests and the monitor can pin the clock; omitted,
 // it is `new Date()` exactly as before.
-function summarizeRainfall(hourly, nowInput){
+//
+// `utcOffsetSeconds` is the location's offset, i.e. the response's
+// `utc_offset_seconds`. Pass it explicitly, or leave it on the hourly object
+// (monitor/weather.js attaches it) and it will be picked up from there. When
+// neither is available the labels are read as UTC, which is right for
+// Z-suffixed fixtures and is the old behaviour for everything else.
+function summarizeRainfall(hourly, nowInput, utcOffsetSeconds){
   const hours = hourly.precipitation;
   const times = hourly.time;
   const now = nowInput === undefined ? new Date() : nowInput;
+  const offset = Number.isFinite(utcOffsetSeconds)
+    ? utcOffsetSeconds
+    : (Number.isFinite(hourly.utc_offset_seconds) ? hourly.utc_offset_seconds : 0);
+  const nowMs = now.getTime();
   // "now" is approximated as the last hour at/before the current time.
   let nowIdx = times.length - 1;
   for(let i = 0; i < times.length; i++){
-    if(new Date(times[i]) > now){ nowIdx = Math.max(0, i - 1); break; }
+    if(hourInstantMs(times[i], offset) > nowMs){ nowIdx = Math.max(0, i - 1); break; }
   }
   function sumLastNHours(n){
     let sum = 0;

@@ -1148,7 +1148,10 @@ async function fetchRainfall(lat, lon){
   const res = await fetch(TheeramRisk.buildForecastUrl(lat, lon));
   if(!res.ok) throw new Error('Weather data unavailable');
   const data = await res.json();
-  return TheeramRisk.summarizeRainfall(data.hourly);
+  // The phone's own timezone is irrelevant — and in Kerala it is IST, which
+  // would shift the window by 5.5h. The location's offset comes from the
+  // response.
+  return TheeramRisk.summarizeRainfall(data.hourly, undefined, data.utc_offset_seconds);
 }
 
 function cardTemplate(loc){

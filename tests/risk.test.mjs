@@ -322,3 +322,166 @@ describe('URL builders', () => {
       'https://api.open-meteo.com/v1/elevation?latitude=9.93&longitude=76.26');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TIMEZONE ANCHORING REGRESSION
+//
+// Open-Meteo is queried with `timezone=auto`, so every hourly label is in the
+// LOCATION's local time and carries no zone designator ("2026-09-13T04:00").
+// The old code fed those straight to `new Date()`, which parses them in the
+// RUNTIME's zone — UTC on a GitHub Actions runner, IST on a phone in Kerala.
+// The anchor therefore missed by the difference between the two zones and the
+// whole 24/48/72h window slid with it.
+//
+// Each test below pins the damage the bug did, then asserts the fix.
+
+// Local-labelled series exactly as the API returns it: no Z, no offset.
+function localSeries(hours, gen, startLocal = '2026-09-10T00:00') {
+  const time = [], precipitation = [];
+  const base = Date.parse(startLocal + 'Z');
+  for (let i = 0; i < hours; i++) {
+    time.push(new Date(base + i * 3600e3).toISOString().slice(0, 16));
+    precipitation.push(gen(i));
+  }
+  return { time, precipitation };
+}
+
+// Index 0 is local 2026-09-10T00:00, so index i is local hour i.
+const IDX = (day, hour) => (day - 10) * 24 + hour;
+const INSTANT = new Date('2026-09-13T04:12:00Z');   // fixed wall-clock instant
+const OFF_IST = 5.5 * 3600;
+const OFF_VN = 7 * 3600;        // Asia/Ho_Chi_Minh, UTC+7
+const OFF_NY = -4 * 3600;       // America/New_York in September, UTC-4
+
+describe('summarizeRainfall — timezone anchoring (positive UTC offset)', () => {
+  // At the instant above, Vietnam local time is 11:12, so the anchor belongs
+  // at local 11:00. The bug anchored at local 04:00 — seven hours stale.
+  // Rain is placed in exactly those seven lost hours.
+  const rainy = (i) => (i > IDX(13, 4) && i <= IDX(13, 11) ? 10 : 0);
+  const s = localSeries(120, rainy);
+
+  test('the seven most recent hours of rain are counted', () => {
+    const out = summarizeRainfall(s, INSTANT, OFF_VN);
+    assert.equal(out.r24, 70, 'anchor must sit at local 11:00');
+  });
+
+  test('and are NOT misfiled as forecast', () => {
+    assert.equal(summarizeRainfall(s, INSTANT, OFF_VN).forecastNext24h, 0);
+  });
+
+  test('REGRESSION: without the offset the same rain vanishes from r24', () => {
+    // This is precisely what shipped: labels read as UTC, anchor 7h behind.
+    const bug = summarizeRainfall(s, INSTANT, 0);
+    assert.equal(bug.r24, 0, 'documents the old behaviour');
+    assert.equal(bug.forecastNext24h, 70,
+      'and observed rainfall was reported as forecast, which is worse');
+  });
+
+  test('a Severe event is downgraded to Minimal by the bug', () => {
+    // 260mm over the last 24h, the bulk of it in the hours the bug dropped.
+    const heavy = localSeries(120, (i) => {
+      if (i > IDX(13, 4) && i <= IDX(13, 11)) return 30;   // 7 * 30 = 210
+      if (i > IDX(12, 12) && i <= IDX(13, 4)) return 5;    // 16 * 5  = 80
+      return 0;
+    });
+    assert.equal(computeRisk(summarizeRainfall(heavy, INSTANT, OFF_VN)).level, 'Severe');
+    assert.equal(computeRisk(summarizeRainfall(heavy, INSTANT, 0)).level, 'Moderate',
+      'the shipped bug under-reported a Severe event');
+  });
+});
+
+describe('summarizeRainfall — timezone anchoring (negative UTC offset)', () => {
+  // New York local time at that instant is 00:12, so the anchor belongs at
+  // local 00:00. The bug anchored at local 04:00 — four hours into the
+  // FORECAST, letting predicted rain masquerade as observed.
+  const s = localSeries(120, (i) => (i > IDX(13, 0) && i <= IDX(13, 4) ? 10 : 0));
+
+  test('forecast hours stay out of the observed windows', () => {
+    const out = summarizeRainfall(s, INSTANT, OFF_NY);
+    assert.equal(out.r24, 0, 'nothing has fallen yet');
+    assert.equal(out.forecastNext24h, 40, 'it is all still forecast');
+  });
+
+  test('REGRESSION: without the offset, forecast rain was counted as observed', () => {
+    const bug = summarizeRainfall(s, INSTANT, 0);
+    assert.equal(bug.r24, 40,
+      'documents the old behaviour: predicted rain drove the risk level');
+  });
+
+  test('r24/r48/r72 remain observation-only after the fix', () => {
+    const future = localSeries(120, (i) => (i > IDX(13, 0) ? 50 : 0));
+    const out = summarizeRainfall(future, INSTANT, OFF_NY);
+    assert.equal(out.r24, 0);
+    assert.equal(out.r48, 0);
+    assert.equal(out.r72, 0);
+    assert.ok(out.forecastNext24h > 0, 'the forecast window still sees it');
+  });
+});
+
+describe('summarizeRainfall — offset plumbing', () => {
+  const s = localSeries(120, (i) => (i > IDX(13, 4) && i <= IDX(13, 11) ? 10 : 0));
+
+  test('UTC itself (offset 0) anchors on the label as written', () => {
+    assert.equal(summarizeRainfall(s, INSTANT, 0).r24, 0);
+    const utcRain = localSeries(120, (i) => (i > IDX(12, 4) && i <= IDX(13, 4) ? 4 : 0));
+    assert.equal(summarizeRainfall(utcRain, INSTANT, 0).r24, 96);
+  });
+
+  test('the offset is picked up from the hourly object when not passed', () => {
+    const withOffset = { ...s, utc_offset_seconds: OFF_VN };
+    assert.equal(summarizeRainfall(withOffset, INSTANT).r24, 70,
+      'monitor/weather.js attaches it there');
+  });
+
+  test('an explicit argument overrides the one on the object', () => {
+    const withOffset = { ...s, utc_offset_seconds: OFF_VN };
+    assert.equal(summarizeRainfall(withOffset, INSTANT, 0).r24, 0);
+  });
+
+  test('Z-suffixed labels are already unambiguous and ignore the offset', () => {
+    const z = series(120, () => 1);            // helper emits ...T00:00:00Z
+    const a = summarizeRainfall(z, NOW, 0);
+    const b = summarizeRainfall(z, NOW, OFF_VN);
+    assert.deepEqual(a, b, 'an explicit zone in the label wins');
+    assert.equal(a.r24, 25);
+  });
+
+  test('Kerala (UTC+5:30) — the offset the real users actually have', () => {
+    // IST is +5:30, so the anchor lands on a half-hour-shifted local hour.
+    // At 04:12Z that is 09:42 IST, so the last complete hour is 09:00.
+    const kerala = localSeries(120, (i) => (i > IDX(13, 4) && i <= IDX(13, 9) ? 20 : 0));
+    assert.equal(summarizeRainfall(kerala, INSTANT, OFF_IST).r24, 100);
+    assert.equal(summarizeRainfall(kerala, INSTANT, 0).r24, 0,
+      'the shipped bug lost 5.5h of the most recent rain in Kerala');
+  });
+});
+
+describe('summarizeRainfall — independent of the runtime timezone', () => {
+  // The point of the fix: the answer must not depend on TZ. Proving that needs
+  // a second process, because a test run only ever has one timezone.
+  test('identical results under UTC, IST and New York runtimes', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const riskUrl = new URL('../www/js/risk.js', import.meta.url).href;
+    const code = `
+      import(${JSON.stringify(riskUrl)}).then(({ summarizeRainfall }) => {
+        const time = [], precipitation = [];
+        const base = Date.parse('2026-09-10T00:00Z');
+        for (let i = 0; i < 120; i++) {
+          time.push(new Date(base + i * 3600e3).toISOString().slice(0, 16));
+          precipitation.push(i > 76 && i <= 83 ? 10 : 0);
+        }
+        const out = summarizeRainfall({ time, precipitation },
+          new Date('2026-09-13T04:12:00Z'), ${OFF_VN});
+        process.stdout.write(JSON.stringify(out));
+      });
+    `;
+    const run = (TZ) => JSON.parse(execFileSync(process.execPath, ['-e', code],
+      { env: { ...process.env, TZ }, encoding: 'utf8' }));
+
+    const utc = run('UTC');
+    assert.equal(utc.r24, 70, 'sanity: the fixture is the seven-hour case');
+    for (const tz of ['Asia/Kolkata', 'America/New_York', 'Pacific/Kiritimati']) {
+      assert.deepEqual(run(tz), utc, `results drifted under TZ=${tz}`);
+    }
+  });
+});
