@@ -880,6 +880,7 @@
       <div class="account-menu" id="accountMenu">
         <button id="editProfileBtn">Edit profile</button>
         <button id="signOutBtn" class="danger">Sign out</button>
+        <button id="deleteAccountBtn" class="danger">Delete account</button>
       </div>
     </div>
   </div>
@@ -1014,6 +1015,36 @@
       <button class="auth-skip-btn" id="joinLinkCancelBtn">Not now</button>
     </div>
     <div class="auth-error" id="joinLinkError"></div>
+  </div>
+</div>
+
+<div id="deleteAccountModal" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <h3>Delete your account</h3>
+    <p class="onboard-desc">
+      This permanently deletes your Theeram account and associated data.
+      This action cannot be undone.
+    </p>
+    <ul class="onboard-desc" style="margin:0 0 10px 18px; padding:0; list-style:disc">
+      <li>Your profile, including phone and emergency contact</li>
+      <li>Every saved place you added, and its alert history</li>
+      <li>Your notification registrations on all devices</li>
+      <li>Your membership of every family circle</li>
+    </ul>
+    <p class="onboard-desc" id="deleteAccountFamilyNote" style="display:none"></p>
+    <div class="auth-field" id="deleteAccountPasswordRow" style="display:none">
+      <label for="deleteAccountPassword">Confirm your password</label>
+      <input type="password" id="deleteAccountPassword" autocomplete="current-password">
+    </div>
+    <label class="onboard-desc" style="display:flex; gap:8px; align-items:flex-start; margin-top:8px">
+      <input type="checkbox" id="deleteAccountAck" style="margin-top:3px">
+      <span>I understand this cannot be undone.</span>
+    </label>
+    <p id="deleteAccountError" class="auth-error" style="display:none"></p>
+    <div class="modal-actions">
+      <button class="auth-primary-btn danger-btn" id="deleteAccountConfirmBtn" disabled>Delete my account</button>
+      <button class="auth-skip-btn" id="deleteAccountCancelBtn">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -1400,5 +1431,8 @@ if('serviceWorker' in navigator){
      after auth.js dispatches it; module scripts run in document order.
      No-ops in a plain browser where the Capacitor bridge is absent. -->
 <script type="module" src="js/push.js"></script>
+<!-- In-app account deletion. Self-wiring: it binds its own menu entry and
+     dialog once the DOM is ready, so nothing else needs to know about it. -->
+<script type="module" src="js/account-delete.js"></script>
 </body>
 </html>

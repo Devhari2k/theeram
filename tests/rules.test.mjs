@@ -497,3 +497,69 @@ describe('Default deny', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Account deletion — the exact writes www/js/account-delete.js performs.
+//
+// The flow's correctness rests on these rules permitting a user to erase their
+// own graph and nothing else, so each step is asserted here rather than
+// reasoned about in a comment. Ordering matters: the membership document is
+// the capability that authorises the family-scoped deletes, so it goes last.
+describe('Account deletion', () => {
+  test('a user CAN delete their own profile document', async () => {
+    // users/{uid} is `allow read, write: if isOwner(uid)`, and write covers
+    // delete. This one document carries phone, emergencyContact, homeLocation
+    // and the entire devices map, so it is the bulk of the personal data.
+    await assertSucceeds(deleteDoc(doc(as(env, 'alice'), 'users', 'alice')));
+  });
+
+  test('a user CANNOT delete anyone else\'s profile document', async () => {
+    await assertFails(deleteDoc(doc(as(env, 'bob'), 'users', 'alice')));
+  });
+
+  test('deleting your own locations then your own membership succeeds in that order', async () => {
+    const bob = as(env, 'bob');
+    await assertSucceeds(deleteDoc(doc(bob, 'families', F1, 'locations', 'locBob')));
+    await assertSucceeds(deleteDoc(doc(bob, 'families', F1, 'members', 'bob')));
+  });
+
+  test('once the membership is gone the family-scoped deletes are refused', async () => {
+    // Proves the ordering is load-bearing and not merely tidy.
+    const bob = as(env, 'bob');
+    await assertSucceeds(deleteDoc(doc(bob, 'families', F1, 'members', 'bob')));
+    await assertFails(deleteDoc(doc(bob, 'families', F1, 'locations', 'locBob')));
+  });
+
+  test('a sole admin CAN promote a successor before leaving', async () => {
+    // The promote-then-leave path: hand the family over, then surrender the
+    // membership that authorised the handover.
+    const alice = as(env, 'alice');
+    await assertSucceeds(updateDoc(doc(alice, 'families', F1, 'members', 'bob'), { role: 'admin' }));
+    await assertSucceeds(deleteDoc(doc(alice, 'families', F1, 'members', 'alice')));
+  });
+
+  test('deleting the family doc first still leaves the member deletes authorised', async () => {
+    // isFamilyMember()/isFamilyAdmin() read the members document, never the
+    // family document, which is why the family doc can go first.
+    const alice = as(env, 'alice');
+    await assertSucceeds(deleteDoc(doc(alice, 'families', F1)));
+    await assertSucceeds(deleteDoc(doc(alice, 'families', F1, 'locations', 'locBob')));
+    await assertSucceeds(deleteDoc(doc(alice, 'families', F1, 'members', 'alice')));
+  });
+
+  test('RESIDUAL: a client cannot delete alertDecisions', async () => {
+    // No rule matches this collection, so it falls to the default-deny
+    // catch-all. Confirms the server-side sweep the flow reports as required.
+    await assertFails(deleteDoc(doc(as(env, 'alice'), 'alertDecisions', 'anything')));
+    await assertFails(getDoc(doc(as(env, 'alice'), 'alertDecisions', 'anything')));
+  });
+
+  test('RESIDUAL: a used invite code is immutable to every client', async () => {
+    // allow delete is `if false`; allow update requires used == false, and a
+    // code carrying a uid in usedBy is by definition already used.
+    await assertFails(deleteDoc(doc(as(env, 'alice'), 'inviteCodes', 'CODE01')));
+    await assertFails(
+      updateDoc(doc(as(env, 'alice'), 'inviteCodes', 'CODE01'), { usedBy: null })
+    );
+  });
+});
