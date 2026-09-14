@@ -19,7 +19,20 @@
 // simply be run again — there is no partial state to reconcile and no cursor
 // to persist.
 
-import { FieldValue, FieldPath } from 'firebase-admin/firestore';
+// Firestore's field types are taken from the `db` instance rather than
+// imported, and that is load-bearing. functions/ carries its own
+// firebase-admin for deployment, so an imported FieldPath would come from a
+// DIFFERENT copy of the package than the caller's Firestore instance, and the
+// SDK rejects the mismatch with "Detected an object of type FieldPath that
+// doesn't match the expected instance". Reading them off db.constructor makes
+// them the same package's types by construction, whoever calls in.
+function fieldTypes(db) {
+  const C = db && db.constructor;
+  if (!C || typeof C.FieldPath !== 'function' || typeof C.FieldValue !== 'function') {
+    throw new Error('purge: could not resolve Firestore field types from the db instance');
+  }
+  return { FieldPath: C.FieldPath, FieldValue: C.FieldValue };
+}
 
 // Read page size. Kept well under the write batch so a page never produces
 // more updates than one batch can hold.
@@ -92,7 +105,8 @@ export function planInviteCleanup(data, uid) {
  * whatever characters it contains. This is the same class of guard as
  * notify.js's recipient-path check, enforced structurally instead.
  */
-export function toUpdateArgs(ops) {
+export function toUpdateArgs(db, ops) {
+  const { FieldPath, FieldValue } = fieldTypes(db);
   const args = [];
   for (const o of ops) {
     const path = new FieldPath(...o.path);
@@ -127,6 +141,7 @@ async function flush(db, pending, stats) {
  * The collection is small by design — decisions retire after 12 hours.
  */
 export async function purgeAlertDecisions(db, uid, { logger = console } = {}) {
+  const { FieldPath } = fieldTypes(db);
   const stats = { scanned: 0, matched: 0, documentsUpdated: 0, batches: 0, truncated: false };
   const pending = [];
   let cursor = null;
@@ -142,7 +157,7 @@ export async function purgeAlertDecisions(db, uid, { logger = console } = {}) {
       const ops = planDecisionCleanup(d.data(), uid);
       if (ops.length) {
         stats.matched++;
-        pending.push({ ref: d.ref, args: toUpdateArgs(ops) });
+        pending.push({ ref: d.ref, args: toUpdateArgs(db, ops) });
       }
     }
     if (pending.length >= WRITE_BATCH) await flush(db, pending, stats);
@@ -165,6 +180,7 @@ export async function purgeAlertDecisions(db, uid, { logger = console } = {}) {
  * queries, so these are indexed by default and cost only what they match.
  */
 export async function purgeInviteCodes(db, uid) {
+  const { FieldPath } = fieldTypes(db);
   const stats = { scanned: 0, matched: 0, documentsUpdated: 0, batches: 0, truncated: false };
   const pending = [];
   const seen = new Set();
@@ -188,7 +204,7 @@ export async function purgeInviteCodes(db, uid) {
         const ops = planInviteCleanup(d.data(), uid);
         if (ops.length) {
           stats.matched++;
-          pending.push({ ref: d.ref, args: toUpdateArgs(ops) });
+          pending.push({ ref: d.ref, args: toUpdateArgs(db, ops) });
         }
       }
       cursor = snap.docs[snap.docs.length - 1].id;

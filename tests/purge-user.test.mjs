@@ -103,19 +103,19 @@ describe('planInviteCleanup — pure', () => {
 // ---------------------------------------------------------------------------
 describe('toUpdateArgs', () => {
   test('emits path/value pairs for update()\'s varargs form', () => {
-    const args = toUpdateArgs([{ op: 'setNull', path: ['usedBy'] }]);
+    const args = toUpdateArgs(db, [{ op: 'setNull', path: ['usedBy'] }]);
     assert.equal(args.length, 2);
     assert.equal(args[1], null);
   });
 
   test('a uid is a literal FieldPath segment, so it cannot escape', () => {
     // A dotted uid must address recipients -> "a.b", never recipients -> a -> b.
-    const [path] = toUpdateArgs([{ op: 'deleteField', path: ['recipients', 'a.b'] }]);
+    const [path] = toUpdateArgs(db, [{ op: 'deleteField', path: ['recipients', 'a.b'] }]);
     assert.equal(path.toString(), 'recipients.`a.b`');
   });
 
   test('an unknown op is refused rather than silently skipped', () => {
-    assert.throws(() => toUpdateArgs([{ op: 'nope', path: ['x'] }]), /unknown op/);
+    assert.throws(() => toUpdateArgs(db, [{ op: 'nope', path: ['x'] }]), /unknown op/);
   });
 });
 
