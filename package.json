@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Firestore security rules and their emulator test suite for Theeram.",
   "scripts": {
-    "test": "npm run test:risk && npm run test:xss && npm run test:push && npm run test:account && npm run test:monitor && npm run test:rules && npm run test:monitor:emulator",
+    "test": "npm run test:risk && npm run test:xss && npm run test:push && npm run test:account && npm run test:monitor && npm run test:rules && npm run test:monitor:emulator && npm run test:purge",
     "test:rules": "firebase emulators:exec --only firestore --project demo-theeram \"node --test tests/vuln-demo.test.mjs tests/rules.test.mjs\"",
     "test:risk": "node --test tests/risk.test.mjs",
     "test:xss": "node --test tests/xss.test.mjs",
@@ -15,7 +15,8 @@
     "monitor:dry": "node monitor/index.js --dry-run",
     "monitor": "node monitor/index.js",
     "test:fcm": "node monitor/test-fcm.js --production",
-    "test:account": "node --test tests/account-delete.test.mjs"
+    "test:account": "node --test tests/account-delete.test.mjs",
+    "test:purge": "firebase emulators:exec --only firestore --project demo-theeram \"node --test tests/purge-user.test.mjs\""
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.1",
