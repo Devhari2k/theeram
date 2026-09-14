@@ -4,10 +4,11 @@
 // argument, which is what makes every transition unit-testable without an
 // emulator and what makes overlapping runs safe to reason about.
 //
-// NOTHING IS SENT IN THIS PHASE. decide() returns a DECISION describing the
-// notification that would go out; the caller records it and updates state.
-// When FCM lands, the send is bolted onto the decision — the detection logic
-// below does not change.
+// THIS FILE DECIDES, IT DOES NOT SEND. decide() returns a DECISION describing
+// the notification that should go out; run.js records it in alertDecisions and
+// notify.js delivers it over FCM. Detection and delivery stay separate so a
+// failed send never rewrites history, and so every transition here remains
+// testable without a network.
 
 // computeRisk() returns exactly these five levels. Anything unrecognised is
 // treated as 'normal' rather than throwing: an unknown level must never be

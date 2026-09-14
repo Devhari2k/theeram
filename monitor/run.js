@@ -265,7 +265,9 @@ export async function applyLocation({ db, ref, locationId, familyId, next, nowMs
         band: decision.band,
         episodeId: decision.episodeId,
         decidedAt: new Date(decision.at).toISOString(),
-        delivered: false,      // no FCM in this phase
+        // Delivery is the notification phase's job, not this transaction's:
+        // notify.js claims undelivered decisions and flips these.
+        delivered: false,
         deliveredAt: null
       });
     }

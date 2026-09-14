@@ -142,10 +142,10 @@ itself needs no change.
 
 ## Hardening worth doing later
 
-- **Pin actions to commit SHAs** rather than major tags. With
-  `id-token: write` in a public repository, a moved tag is a real supply-chain
-  path. Resolve with:
-  `gh api repos/actions/checkout/commits/v4 --jq .sha`
+- ~~**Pin actions to commit SHAs** rather than major tags.~~ Done — both
+  workflows pin full SHAs with the release recorded in a trailing comment.
+  When bumping, re-resolve and update the SHA and the comment together:
+  `git ls-remote https://github.com/actions/checkout refs/tags/v4`
 - **Narrow the attribute-condition to a branch** once merged, e.g. adding
   `&& assertion.ref=='refs/heads/main'`, so only the default branch can
   authenticate.

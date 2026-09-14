@@ -1,5 +1,22 @@
-const CACHE_NAME = 'theeram-v2';
-const SHELL_FILES = ['./index.html', './manifest.json', './icon.svg'];
+// Bumping this is what repairs an already-installed device: changing the bytes
+// of this file is the ONLY thing that makes the browser re-run install, and
+// activate then deletes every cache whose name no longer matches — including
+// the stale index.html that theeram-v2 was holding.
+const CACHE_NAME = 'theeram-v3';
+
+// index.html is deliberately NOT here.
+//
+// It was, and it was served cache-first, which meant an install that updated
+// its APK kept rendering the index.html it had cached the first time. The app
+// shell only re-cached when the bytes of THIS file changed, and they had not
+// changed since the source was restored — so fixes that live in index.html
+// (the stored-XSS escaping in cardTemplate, the rainfall timezone anchoring in
+// fetchRainfall) could never reach a device that upgraded in place.
+//
+// Caching it bought nothing anyway: inside the packaged Capacitor app every
+// shell file is already on local storage, so "the network" is a local read.
+// Leave index.html out, and an upgraded APK always runs the code it shipped.
+const SHELL_FILES = ['./manifest.json', './icon.svg'];
 
 // The external CDN scripts (Leaflet, QRCode, Firebase SDK modules) were not
 // cached at all before — every single app launch re-fetched all of them

@@ -6,8 +6,10 @@
 //   node monitor/index.js --production       LIVE project, writes
 //   node monitor/index.js --production --dry-run   LIVE reads, writes nothing
 //
-// See monitor/README.md. Nothing is sent to users in this phase: alert
-// decisions are logged and recorded in Firestore, never delivered.
+// See monitor/README.md. A non-dry run DELIVERS: after the detection pass it
+// sends every undelivered alert decision to the affected family's registered
+// devices over FCM. --dry-run reports what would happen and constructs no
+// Messaging object at all.
 
 import { resolveTarget, initAdmin } from './admin.js';
 import { createWeatherClient } from './weather.js';

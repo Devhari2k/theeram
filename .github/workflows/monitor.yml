@@ -66,12 +66,14 @@ jobs:
             exit 1
           fi
 
-      # Actions are pinned to major tags. Pinning to a full commit SHA is the
-      # hardened option for a public repository holding id-token:write — see
-      # the note in monitor/SCHEDULER.md.
-      - uses: actions/checkout@v4
+      # Actions are pinned to full commit SHAs, not moving major tags. This
+      # repository is public and this job holds id-token:write, so a retargeted
+      # tag would otherwise be enough to exchange the OIDC token for Google
+      # credentials. The trailing comment records the release each SHA is;
+      # update both together. See monitor/SCHEDULER.md.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -83,7 +85,7 @@ jobs:
         run: npm ci --omit=dev
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           project_id: theeram-18e35
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}

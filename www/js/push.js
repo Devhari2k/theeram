@@ -1,9 +1,16 @@
 // Theeram — client-side FCM foundation.
 //
 // Obtains an FCM registration token on Android and stores it against the
-// signed-in user. NOTHING IS SENT OR RECEIVED MEANINGFULLY YET: the server has
-// no delivery code, and the receive handlers here only log. Wiring alert
-// decisions to FCM is a later phase.
+// signed-in user, and creates the notification channel the server addresses.
+// The server side is live: monitor/notify.js delivers real flood alerts to the
+// tokens registered here.
+//
+// Display is handled NATIVELY in both app states, not by the listeners below.
+// Backgrounded, the Firebase SDK posts the notification itself; foregrounded,
+// it hands off to the Capacitor plugin, which posts it because
+// capacitor.config.json declares PushNotifications.presentationOptions. The
+// JS listeners are therefore intentionally passive — they observe, they do not
+// draw. Removing presentationOptions would silently break foreground alerts.
 //
 // Two deliberate choices worth reading before changing anything:
 //
