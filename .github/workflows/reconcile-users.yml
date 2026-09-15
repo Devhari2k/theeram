@@ -1,0 +1,111 @@
+# Account-deletion reconciler.
+#
+# Theeram stays on the Spark plan, so there is no Cloud Functions Auth trigger
+# to clean up after a deleted account. This job does it instead: it finds the
+# uids the server-owned collections still mention, asks Firebase Auth which
+# uids still exist, and removes the difference.
+#
+# Cleanup is therefore EVENTUAL, not instant. The in-app Delete account flow
+# removes everything a client can reach immediately; what is left is closed out
+# on the next run of this workflow.
+#
+# Weekly, not hourly. Nothing about a residual reference is urgent — the data
+# is a bare uid on documents no client can read — and a destructive sweep
+# should run as rarely as the requirement allows.
+#
+# A push NEVER triggers this. Scheduled runs write; manual runs default to a
+# dry run and must be opted out of explicitly.
+
+name: Reconcile deleted users
+
+on:
+  schedule:
+    # 04:40 UTC on Sundays — 10:10 IST, off the hourly monitor's :17 slot.
+    - cron: '40 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report only — write nothing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+# Shares the monitor's group so a sweep never interleaves with an hourly pass.
+concurrency:
+  group: flood-monitor
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check required configuration
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          missing=0
+          [ -z "$WIF_PROVIDER" ]    && echo "::error::GCP_WIF_PROVIDER is not set"    && missing=1
+          [ -z "$SERVICE_ACCOUNT" ] && echo "::error::GCP_SERVICE_ACCOUNT is not set" && missing=1
+          if [ "$missing" = "1" ]; then
+            echo "See monitor/SCHEDULER.md for the one-time setup."
+            exit 1
+          fi
+
+      # Pinned to full commit SHAs, not moving tags: this repository is public
+      # and this job holds id-token:write.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci --omit=dev
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          project_id: theeram-18e35
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          # Writes an external_account credential file and exports
+          # GOOGLE_APPLICATION_CREDENTIALS, which monitor/admin.js consumes via
+          # firebase-admin's applicationDefault(). No long-lived key exists.
+          create_credentials_file: true
+
+      # A manual run is a dry run unless the operator clears the checkbox.
+      # A scheduled run (inputs.dry_run is empty) writes.
+      - name: Reconcile
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry' || 'live' }}
+        run: |
+          if [ "$MODE" = "dry" ]; then
+            echo "DRY RUN — reading production, writing nothing."
+            node monitor/reconcile-cli.js --production --json
+          else
+            echo "LIVE — residual references to departed accounts will be removed."
+            node monitor/reconcile-cli.js --production --confirm --json
+          fi
+
+      - name: What the run means
+        if: always()
+        run: |
+          {
+            echo "### Account-deletion reconciler"
+            echo ""
+            echo "\`departedCount\` is how many uids were referenced by server-owned"
+            echo "records but no longer exist in Firebase Auth."
+            echo ""
+            echo "- \`aborted: true\` means the live Auth set could not be trusted and"
+            echo "  **nothing was written**. That is a failure, not a quiet success."
+            echo "- \`deferredCount\` above zero means work remains for the next run."
+            echo "- A dry run reports \`documentsUpdated\` with \`batches: 0\`."
+          } >> "$GITHUB_STEP_SUMMARY"
