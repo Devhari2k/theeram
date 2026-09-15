@@ -2,15 +2,6 @@
   "firestore": {
     "rules": "firestore.rules"
   },
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs20",
-    "ignore": [
-      "node_modules",
-      ".git",
-      "*.local"
-    ]
-  },
   "emulators": {
     "auth": {
       "port": 9099

@@ -1,4 +1,4 @@
-// Theeram — privileged cleanup for a deleted user.
+// Theeram — privileged cleanup for a departed user's residual records.
 //
 // The in-app deletion flow (www/js/account-delete.js) erases everything a
 // client is permitted to erase. Two collections are deliberately out of its
@@ -20,12 +20,13 @@
 // to persist.
 
 // Firestore's field types are taken from the `db` instance rather than
-// imported, and that is load-bearing. functions/ carries its own
-// firebase-admin for deployment, so an imported FieldPath would come from a
-// DIFFERENT copy of the package than the caller's Firestore instance, and the
-// SDK rejects the mismatch with "Detected an object of type FieldPath that
-// doesn't match the expected instance". Reading them off db.constructor makes
-// them the same package's types by construction, whoever calls in.
+// imported, and that is load-bearing. The SDK compares FieldPath/FieldValue by
+// package identity, so a type imported from a different copy of firebase-admin
+// than the one that produced `db` is rejected with "Detected an object of type
+// FieldPath that doesn't match the expected instance". That bit once already,
+// when this module lived in a directory with its own dependency tree. Reading
+// them off db.constructor makes them the same package's types by construction,
+// whoever calls in and however the tree is arranged.
 function fieldTypes(db) {
   const C = db && db.constructor;
   if (!C || typeof C.FieldPath !== 'function' || typeof C.FieldValue !== 'function') {

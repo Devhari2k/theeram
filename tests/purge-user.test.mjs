@@ -1,10 +1,10 @@
-// Theeram — privileged cleanup for a deleted user.
+// Theeram — per-uid purge of a departed user's residual records.
 // Run with: npm run test:purge
 //
 // The pure planners run in isolation; the sweeps run against the Firestore
-// emulator with the Admin SDK, which is exactly how the Cloud Function runs.
-// No Auth account is created or deleted here — the trigger is a thin wrapper
-// and the work it delegates to is what needs proving.
+// emulator with the Admin SDK, the same way monitor/reconcile.js drives them.
+// Auth is not involved here — deciding WHICH uids are departed is the
+// reconciler's job and is covered by tests/reconcile.test.mjs.
 
 import { test, describe, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +15,7 @@ import {
   planDecisionCleanup, planInviteCleanup, toUpdateArgs,
   purgeAlertDecisions, purgeInviteCodes, purgeDeletedUser,
   SCAN_PAGE, WRITE_BATCH
-} from '../functions/purge.js';
+} from '../monitor/purge.js';
 
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
 const PROJECT = 'demo-theeram-purge';
