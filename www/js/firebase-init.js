@@ -9,7 +9,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {
   initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence,
-  GoogleAuthProvider
+  browserPopupRedirectResolver, GoogleAuthProvider
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
@@ -30,8 +30,24 @@ export const app = initializeApp(firebaseConfig);
 // initializeAuth() with an explicit persistence chain (try IndexedDB, then
 // localStorage, then finally in-memory only as a last resort) is the
 // documented fix for hybrid/WebView environments.
+//
+// popupRedirectResolver must be passed EXPLICITLY here. getAuth() supplies
+// browserPopupRedirectResolver for you; initializeAuth() does not, and leaves
+// auth._popupRedirectResolver null. signInWithPopup/reauthenticateWithPopup
+// then fail with auth/argument-error before any network call — on every
+// platform, browser included. Android does not use the popup flow at all
+// (see google-auth.js), but the browser and PWA builds do.
 export const auth = initializeAuth(app, {
-  persistence: [indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence]
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver
 });
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// The OAuth *web* client (client_type 3 in android/app/google-services.json).
+// Credential Manager uses it as the ID token's audience on Android; the app is
+// matched separately by package name + signing SHA-1 against the Android
+// client (client_type 1). Public by design — it identifies the project, it
+// does not authorise anything on its own.
+export const GOOGLE_WEB_CLIENT_ID =
+  '636532341453-dgt0k3g7tg9ce6pujcsojlfjvhgoslet.apps.googleusercontent.com';

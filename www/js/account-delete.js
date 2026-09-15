@@ -28,12 +28,13 @@
 // any other family would consult the wrong roster. Deletion fetches each
 // family's own roster instead. family.js is left untouched.
 
-import { auth, db, googleProvider } from './firebase-init.js';
+import { auth, db } from './firebase-init.js';
 import {
   planDeletion, primaryProviderId, RESIDUAL
 } from './account-delete-plan.js';
+import { reauthenticateWithGoogle, describeGoogleError } from './google-auth.js';
 import {
-  EmailAuthProvider, reauthenticateWithCredential, reauthenticateWithPopup, deleteUser
+  EmailAuthProvider, reauthenticateWithCredential, deleteUser
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {
   doc, getDocs, deleteDoc, updateDoc, collection, collectionGroup,
@@ -65,23 +66,30 @@ export async function reauthenticate({ password } = {}) {
     return { provider };
   }
 
-  // Google and friends. Inside the packaged Android WebView the popup flow is
-  // unavailable — the same limitation the sign-in screen already reports — so
-  // the failure is translated rather than surfaced as a raw Firebase code.
+  // Google and friends. This used to be reauthenticateWithPopup, which cannot
+  // run in the packaged WebView, so a Google user was told to go and find a
+  // browser — i.e. could not delete their account in the app at all. It now
+  // goes through the same native Credential Manager flow as signing in, and
+  // falls back to the popup only in a real browser.
+  //
+  // The requirement is NOT relaxed. A Google ID token minted seconds ago is
+  // handed to reauthenticateWithCredential, which verifies it server-side and
+  // rejects it with auth/user-mismatch unless it belongs to this very account.
+  // The account chooser always appears because the native login uses
+  // style: 'standard' (see nativeIdToken in google-auth.js), so confirming is
+  // a deliberate act rather than silent reuse of a cached credential.
   try {
-    await reauthenticateWithPopup(user, googleProvider);
+    await reauthenticateWithGoogle(user);
     return { provider };
   } catch (err) {
-    const code = (err && err.code) || '';
-    if (code.includes('operation-not-supported-in-this-environment') ||
-        code.includes('disallowed-useragent') ||
-        code.includes('popup-blocked')) {
-      throw new Error(
-        'Confirming a Google account needs the browser version of Theeram. ' +
-        'Open Theeram in your browser and delete your account there.'
-      );
+    const { kind, message } = describeGoogleError(err, { context: 'reauth' });
+    if (kind === 'cancelled') {
+      throw new Error('Confirmation cancelled. Your account has not been deleted.');
     }
-    throw err;
+    // Firebase codes the dialog already handles (requires-recent-login,
+    // too-many-requests) are passed through untouched.
+    if (kind === 'unknown' && err && err.code) throw err;
+    throw new Error(message);
   }
 }
 
@@ -200,6 +208,7 @@ function wireDeleteAccountUi() {
 
   const pwRow = document.getElementById('deleteAccountPasswordRow');
   const pwInput = document.getElementById('deleteAccountPassword');
+  const googleNote = document.getElementById('deleteAccountGoogleNote');
   const ack = document.getElementById('deleteAccountAck');
   const confirmBtn = document.getElementById('deleteAccountConfirmBtn');
   const cancelBtn = document.getElementById('deleteAccountCancelBtn');
@@ -231,9 +240,12 @@ function wireDeleteAccountUi() {
     pwInput.value = '';
     refreshEnabled();
 
-    // Only password accounts can be re-confirmed in place.
+    // Only password accounts can be re-confirmed in place. Everyone else is
+    // re-confirmed through their provider, so say which it will be rather than
+    // springing an account chooser on them mid-delete.
     const usesPassword = primaryProviderId(auth.currentUser) === 'password';
     pwRow.style.display = usesPassword ? 'block' : 'none';
+    if (googleNote) googleNote.style.display = usesPassword ? 'none' : 'block';
 
     // Tell the user up front what will happen to the families they run,
     // rather than surprising them — or their family — afterwards.

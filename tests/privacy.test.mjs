@@ -168,7 +168,7 @@ describe('the policy matches what the code actually does', () => {
     // added to the policy or this fails.
     const sources = ['www/index.html', 'www/js/auth.js', 'www/js/family.js',
                      'www/js/push.js', 'www/js/firebase-init.js',
-                     'www/service-worker.js'].map(read).join('\n');
+                     'www/js/google-auth.js', 'www/service-worker.js'].map(read).join('\n');
     const hosts = new Set(
       (sources.match(/https?:\/\/[^"'`\s)]+/g) || [])
         .map(u => u.replace(/^https?:\/\//, '').split('/')[0])

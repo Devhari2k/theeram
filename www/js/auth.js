@@ -1,6 +1,7 @@
-import { auth, db, googleProvider } from './firebase-init.js';
+import { auth, db } from './firebase-init.js';
+import { signInWithGoogle, describeGoogleError, signOutNativeGoogle } from './google-auth.js';
 import {
-  onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword,
+  onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signOut, updateProfile
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {
@@ -88,9 +89,15 @@ googleBtn.addEventListener('click', async () => {
   authError.textContent = '';
   googleBtn.disabled = true;
   try{
-    await signInWithPopup(auth, googleProvider);
+    // Native Credential Manager on Android, popup in a browser — chosen inside
+    // google-auth.js. Either way this ends in a normal Firebase session, so
+    // onAuthStateChanged below handles the profile exactly as it does for an
+    // email sign-in.
+    await signInWithGoogle();
   }catch(err){
-    authError.textContent = friendlyAuthError(err);
+    // A dismissed account sheet is not a failure: describeGoogleError returns
+    // '' for it, which clears the row rather than accusing the user.
+    authError.textContent = describeGoogleError(err, { context: 'signin' }).message;
   }finally{
     googleBtn.disabled = false;
   }
@@ -102,11 +109,10 @@ function friendlyAuthError(err){
   if(code.includes('auth/user-not-found')) return 'No account with that email — try Create account.';
   if(code.includes('auth/email-already-in-use')) return 'An account already exists with that email — try Sign in.';
   if(code.includes('auth/weak-password')) return 'Password should be at least 6 characters.';
-  if(code.includes('auth/popup-closed-by-user')) return '';
   if(code.includes('auth/unauthorized-domain')) return 'This domain isn’t authorized for sign-in yet in the Firebase console.';
-  if(code.includes('auth/operation-not-supported-in-this-environment') || code.includes('auth/disallowed-useragent')){
-    return 'Google Sign-In can’t run inside the packaged app’s embedded browser yet — use Email/Password here, or Google Sign-In in the regular browser/PWA version.';
-  }
+  // Google failures no longer arrive here — the button routes them through
+  // describeGoogleError, which knows about Credential Manager as well as the
+  // popup flow. This function is the email/password path only.
   return 'Something went wrong. Please try again.';
 }
 
@@ -186,6 +192,10 @@ signOutBtn.addEventListener('click', async () => {
   try {
     if (window.theeramPush) await window.theeramPush.unregisterDevice();
   } catch (e) { /* non-fatal — proceed with sign-out regardless */ }
+  // Drop the native Google session too, so the next sign-in offers the account
+  // chooser instead of silently reusing the last account. Already swallows its
+  // own errors; signing out must never be blocked by it.
+  await signOutNativeGoogle();
   signOut(auth);
 });
 editProfileBtn.addEventListener('click', () => {
