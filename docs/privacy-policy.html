@@ -6,9 +6,13 @@
 <title>Privacy Policy — Theeram</title>
 <meta name="description" content="What Theeram collects, why, who it is shared with, and how to remove it.">
 <meta name="theme-color" content="#0B2027">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<!-- No webfont, no CDN, no analytics: this page must render with no network at
-     all, because it ships inside the app and someone may open it offline. -->
+<!-- The public copy, hosted standalone (GitHub Pages: /theeram/docs/).
+     No webfont, no CDN, no analytics, and no relative reference either — not
+     even a favicon — so the page renders correctly wherever it is hosted, with
+     no network at all and nothing left to 404.
+     The policy itself is byte-identical to www/privacy.html, which is the copy
+     bundled in the app; only the surrounding chrome differs. Edit the policy in
+     one and copy it to the other — tests/privacy.test.mjs enforces this. -->
 <style>
   :root{
     --bg:#0B2027; --bg-elevated:#102C35; --card-border:#1E434F;
@@ -73,7 +77,8 @@
 <body>
 
 <header>
-  <a class="back" href="index.html" id="backLink">&larr; Back</a>
+  <!-- No Back link here: standalone, there is nothing to go back to. The app
+       copy keeps one, because index.html does sit beside it. -->
   <h1>Privacy Policy</h1>
 </header>
 
@@ -340,17 +345,6 @@
   flood warning service. In an emergency, follow Kerala SDMA, NDMA and local authority
   instructions.
 </footer>
-
-<script>
-  // This exact file is also published standalone (docs/privacy-policy.html),
-  // where index.html does not exist beside it. Inside the app the user arrives
-  // from the app, so there is history; opened cold by URL there is none, and
-  // the link is hidden rather than left to 404.
-  if (!document.referrer && window.history.length <= 1) {
-    var b = document.getElementById('backLink');
-    if (b) b.style.display = 'none';
-  }
-</script>
 
 </body>
 </html>

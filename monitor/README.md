@@ -144,8 +144,8 @@ consolidated notification per recipient. A per-recipient ledger
 (`recipients.<uid>`) gives **at-least-once delivery per person**, not merely
 per decision — a retry reaches exactly whoever the previous pass missed.
 Undeliverable decisions retire after 6 attempts or 12 hours so they cannot
-accumulate. See [../docs/PRIVACY_DATA_INVENTORY.md](../docs/PRIVACY_DATA_INVENTORY.md)
-for exactly what a notification carries.
+accumulate. See §7 of [../docs/PRIVACY_POLICY.md](../docs/PRIVACY_POLICY.md) for
+exactly what a notification carries.
 
 `monitor/test-fcm.js` sends one synthetic alert to a single named device for
 end-to-end testing; it is manual-only and never part of an hourly pass.
