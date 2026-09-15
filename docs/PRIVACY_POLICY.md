@@ -1,7 +1,7 @@
 # Theeram Privacy Policy
 
-**Effective date:** [EFFECTIVE DATE]
-**Last updated:** [EFFECTIVE DATE]
+**Effective date:** 15 September 2026
+**Last updated:** 15 September 2026
 
 This policy describes what Theeram collects, why, who it is shared with, and
 how to remove it. It describes the app as it is actually built.
@@ -21,7 +21,7 @@ estimate is a rainfall-and-elevation proxy. It has no river-stage, reservoir,
 soil-moisture, drainage or tide input, and it is not a hydrological forecast.
 Always follow Kerala SDMA, NDMA and local authority guidance in an emergency.
 
-Theeram is operated by [LEGAL ENTITY NAME].
+Theeram is operated by Harishreyas Vijay.
 
 ## 2. Information you provide
 
@@ -248,7 +248,7 @@ No system is perfectly secure, and Theeram cannot guarantee absolute security.
 
 Theeram is not directed at children under 13, and Theeram does not knowingly
 collect personal information from them. If you believe a child has provided
-information, contact [PRIVACY CONTACT EMAIL] and it will be deleted.
+information, contact harishreyasv@gmail.com and it will be deleted.
 
 ## 11. Your rights and choices
 
@@ -264,7 +264,7 @@ Within the app you can:
 Depending on where you live, you may have additional rights — access,
 correction, deletion, portability, or objection to certain processing — under
 laws such as India's Digital Personal Data Protection Act, 2023 or the EU/UK
-GDPR. To exercise them, contact [PRIVACY CONTACT EMAIL].
+GDPR. To exercise them, contact harishreyasv@gmail.com.
 
 This policy does not claim that Theeram is certified as compliant with any
 particular data-protection regime.
@@ -279,9 +279,9 @@ use Theeram after an update means you accept the revised policy.
 
 Questions, requests or complaints:
 
-**[LEGAL ENTITY NAME]**
-Email: [PRIVACY CONTACT EMAIL]
-Address: [BUSINESS ADDRESS]
+**Harishreyas Vijay**
+Email: harishreyasv@gmail.com
+Address: Kumar Bhavan, Nellikala, Elanthoor, Pathanamthitta, Kerala 689643, India
 
 ---
 

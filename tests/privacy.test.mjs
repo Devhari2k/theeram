@@ -106,22 +106,47 @@ describe('the policy matches what the code actually does', () => {
   });
 });
 
-describe('unresolved placeholders are visible, not silently shipped', () => {
+describe('the policy is fully filled in for publication', () => {
   const PLACEHOLDERS = ['[LEGAL ENTITY NAME]', '[PRIVACY CONTACT EMAIL]',
                         '[EFFECTIVE DATE]', '[BUSINESS ADDRESS]'];
+  const CONTACT = 'harishreyasv@gmail.com';
 
-  test('the same placeholders appear in both formats', () => {
+  test('no drafting placeholder survives into either format', () => {
+    // These were deliberate blanks while the operator's details were unknown.
+    // Shipping one would put "[PRIVACY CONTACT EMAIL]" in front of a user.
     for (const ph of PLACEHOLDERS) {
-      assert.ok(APP.includes(ph), `HTML policy is missing ${ph}`);
-      assert.ok(MD.includes(ph), `Markdown policy is missing ${ph}`);
+      assert.ok(!APP.includes(ph), `HTML policy still contains ${ph}`);
+      assert.ok(!MD.includes(ph), `Markdown policy still contains ${ph}`);
+    }
+    assert.ok(!/\[[A-Z][A-Z ]{3,}\]/.test(APP), 'an unfilled bracket placeholder remains in the HTML');
+    assert.ok(!/\[[A-Z][A-Z ]{3,}\]/.test(MD), 'an unfilled bracket placeholder remains in the Markdown');
+  });
+
+  test('the contact email is the configured one, and the only one', () => {
+    for (const doc of [APP, MD]) {
+      const emails = [...new Set(doc.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [])];
+      assert.deepEqual(emails, [CONTACT],
+        `unexpected email address in the policy: ${emails.join(', ')}`);
     }
   });
 
-  test('no invented company name, email or address slipped in', () => {
-    // A plausible-looking fake contact is worse than an obvious placeholder.
-    const body = APP + MD;
-    const emails = (body.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) || [])
-      .filter(e => !e.includes('example'));
-    assert.deepEqual(emails, [], `a concrete email address was invented: ${emails.join(', ')}`);
+  test('an operator and a contact route are both named', () => {
+    // Play and the App Store both require a reachable privacy contact.
+    for (const doc of [APP, MD]) {
+      assert.ok(doc.includes('Harishreyas Vijay'), 'the operator is not named');
+      assert.ok(doc.includes(CONTACT), 'no contact email');
+      assert.ok(/Kerala 689643/.test(doc), 'no postal address');
+      assert.ok(/15 September 2026/.test(doc), 'no effective date');
+    }
+  });
+
+  test('no company or entity is implied for an individual publisher', () => {
+    // Theeram is published by an individual, so the policy must not describe
+    // itself as operated by a company that does not exist.
+    for (const doc of [APP, MD]) {
+      for (const bad of ['Pvt Ltd', 'Private Limited', 'Inc.', 'LLC', 'LLP', 'GmbH']) {
+        assert.ok(!doc.includes(bad), `policy implies a legal entity: ${bad}`);
+      }
+    }
   });
 });
