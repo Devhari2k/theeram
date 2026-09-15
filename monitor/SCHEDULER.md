@@ -3,9 +3,11 @@
 One-time setup so `.github/workflows/monitor.yml` can reach the live Firestore
 project without any long-lived credential existing anywhere.
 
-**No push notifications are involved.** The scheduled run computes risk, writes
-changed values, and records alert decisions with `delivered: false`. Nobody's
-phone is touched.
+**The scheduled run does deliver push notifications.** It computes risk, writes
+changed values, records alert decisions, and then sends the undelivered ones to
+the affected family's registered devices over FCM. A real phone is touched, so
+the service account additionally needs `cloudmessaging.messages.create` (see
+the IAM section below).
 
 ## How the authentication works
 
@@ -47,11 +49,23 @@ gcloud services enable iamcredentials.googleapis.com sts.googleapis.com \
 gcloud iam service-accounts create "$SA" \
   --project="$PROJECT_ID" --display-name="Theeram flood monitor"
 
-# 2. Least privilege: Firestore read/write and nothing else.
-#    NOT Owner, NOT Editor. The monitor only touches Firestore.
+# 2. Least privilege. NOT Owner, NOT Editor — one role per capability.
+#    a) Firestore read/write.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$SA@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/datastore.user"
+
+#    b) Send FCM alerts. roles/firebasemessaging.admin works; a custom role
+#       holding only cloudmessaging.messages.create is tighter and preferred.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SA@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/firebasemessaging.admin"
+
+#    c) Enumerate accounts for the deletion reconciler (RECONCILER.md).
+#       Read-only; it never creates, modifies or deletes an account.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SA@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/firebaseauth.viewer"
 
 # 3. Identity pool
 gcloud iam workload-identity-pools create "$POOL" \
@@ -90,9 +104,9 @@ keeps the project number out of public build output for free.
 ## Turning it on
 
 `schedule` triggers only fire for workflows on the repository's **default
-branch**. While `monitor.yml` lives on `claude/theeram-repo-audit-4vz18b` it
-is inert — nothing runs on a timer until it is merged to `main`. Merging is
-the on-switch.
+branch**. `monitor.yml` is on `main` and running hourly. A workflow added on a
+feature branch stays inert until it is merged — merging is the on-switch, which
+is why `reconcile-users.yml` does not run yet.
 
 Recommended order:
 
