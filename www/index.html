@@ -527,6 +527,12 @@
   }
   .account-menu button:hover{ background:rgba(255,255,255,0.05); }
   .account-menu button.danger{ color:var(--coral); }
+  /* The Privacy Policy entry is an anchor, not a button, so it inherits none
+     of the above; match it to its siblings. */
+  .account-menu a.menu-link{
+    display:block; width:100%; text-align:left; text-decoration:none;
+    background:none; border:none; cursor:pointer;
+  }
 
   /* ---- Tabs ---- */
   .tab-bar{ display:flex; gap:6px; padding-top:4px; margin-bottom:4px; }
@@ -879,6 +885,10 @@
       <div class="account-name" id="accountName"></div>
       <div class="account-menu" id="accountMenu">
         <button id="editProfileBtn">Edit profile</button>
+        <!-- Bundled, not linked out: the policy must be readable with no
+             network, and a flood app is used in exactly the conditions where
+             there may not be one. -->
+        <a class="menu-link" href="privacy.html">Privacy Policy</a>
         <button id="signOutBtn" class="danger">Sign out</button>
         <button id="deleteAccountBtn" class="danger">Delete account</button>
       </div>
@@ -1040,6 +1050,10 @@
       <input type="checkbox" id="deleteAccountAck" style="margin-top:3px">
       <span>I understand this cannot be undone.</span>
     </label>
+    <p class="onboard-desc" style="margin-top:6px">
+      What is removed, and what is cleaned up afterwards, is described in the
+      <a href="privacy.html">Privacy Policy</a>.
+    </p>
     <p id="deleteAccountError" class="auth-error" style="display:none"></p>
     <div class="modal-actions">
       <button class="auth-primary-btn danger-btn" id="deleteAccountConfirmBtn" disabled>Delete my account</button>

@@ -1,16 +1,17 @@
 # Theeram background flood monitor
 
-Scheduled pass that recomputes flood risk for every saved location and decides
-whether an alert *would* be sent.
+Scheduled pass that recomputes flood risk for every saved location, decides
+whether an alert is warranted, and **delivers it** to the affected family's
+registered devices over FCM.
 
-**Nothing is delivered to users in this phase.** There is no FCM and no push.
-Alert decisions are logged and written to `alertDecisions` with
-`delivered: false`. Wiring delivery is a later phase; the detection logic here
-does not change when it lands.
+Detection and delivery are separate by design. `run.js` records a decision in
+`alertDecisions` with `delivered: false`; `notify.js` then claims undelivered
+decisions and sends them, so a failed send never rewrites alert history and
+either half can be restarted independently.
 
-Scheduling is set up in `.github/workflows/monitor.yml` (hourly, authenticated
-by Workload Identity Federation — no stored key). It is inert until that
-workflow reaches the default branch: see [SCHEDULER.md](SCHEDULER.md).
+Scheduling is `.github/workflows/monitor.yml` (hourly, authenticated by
+Workload Identity Federation — no stored key), live on the default branch:
+see [SCHEDULER.md](SCHEDULER.md).
 
 > The risk model is a **rainfall-and-elevation proxy**, not a hydrological
 > flood forecast. It has no river stage, reservoir level, soil moisture,
@@ -135,11 +136,32 @@ Ids and counts only. Never coordinates, family or member names, device tokens,
 credentials, or any personal data — the repository is public and CI logs on a
 public repo are publicly readable.
 
-## Not yet done
+## Delivery
 
-- No FCM / push delivery
-- The scheduler exists but is inert until `monitor.yml` is on the default
-  branch, and until the two GCP secrets are configured (SCHEDULER.md)
-- Client `checkFamilyRiskOnce()` still runs; its cross-member write is removed
-  only once the monitor is proven
-- No Firestore rules change (device-token storage needs one; see Phase 2.3 §10)
+`notify.js` queries `alertDecisions` for `delivered == false`, resolves each
+decision's family to its members and their registered devices, and sends one
+consolidated notification per recipient. A per-recipient ledger
+(`recipients.<uid>`) gives **at-least-once delivery per person**, not merely
+per decision — a retry reaches exactly whoever the previous pass missed.
+Undeliverable decisions retire after 6 attempts or 12 hours so they cannot
+accumulate. See §7 of [../docs/PRIVACY_POLICY.md](../docs/PRIVACY_POLICY.md) for
+exactly what a notification carries.
+
+`monitor/test-fcm.js` sends one synthetic alert to a single named device for
+end-to-end testing; it is manual-only and never part of an hourly pass.
+
+## Account-deletion reconciler
+
+`reconcile.js` clears departed users' identifiers out of the server-owned
+collections a client cannot reach. Weekly, on the same free infrastructure —
+Theeram uses no Cloud Functions and stays on the Spark plan. See
+[RECONCILER.md](RECONCILER.md).
+
+## Still open
+
+- No Firestore TTL on `alertDecisions`; history is retained indefinitely
+- `families/{fid}.createdBy` keeps a departed founder's uid when a circle is
+  handed on, and the reconciler does not yet clear it
+- The reconciler needs `roles/firebaseauth.viewer` on the monitor service
+  account before it can enumerate accounts (RECONCILER.md); until then it fails
+  closed

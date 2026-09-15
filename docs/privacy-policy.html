@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy Policy — Theeram</title>
+<meta name="description" content="What Theeram collects, why, who it is shared with, and how to remove it.">
+<meta name="theme-color" content="#0B2027">
+<!-- The public copy, hosted standalone (GitHub Pages: /theeram/docs/).
+     No webfont, no CDN, no analytics, and no relative reference either — not
+     even a favicon — so the page renders correctly wherever it is hosted, with
+     no network at all and nothing left to 404.
+     The policy itself is byte-identical to www/privacy.html, which is the copy
+     bundled in the app; only the surrounding chrome differs. Edit the policy in
+     one and copy it to the other — tests/privacy.test.mjs enforces this. -->
+<style>
+  :root{
+    --bg:#0B2027; --bg-elevated:#102C35; --card-border:#1E434F;
+    --cyan:#3FA7D6; --amber:#F4A261; --coral:#E76F51;
+    --text:#EAF4F4; --text-dim:#9FC2C4; --text-faint:#6B8C8E;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-size:15px; line-height:1.65; padding:0 0 64px;
+    -webkit-text-size-adjust:100%;
+  }
+  header{
+    position:sticky; top:0; z-index:10;
+    background:rgba(11,32,39,0.94); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--card-border);
+    padding:14px 20px; display:flex; align-items:center; gap:12px;
+  }
+  header a.back{
+    color:var(--cyan); text-decoration:none; font-size:14px; font-weight:600;
+    padding:6px 10px; margin-left:-10px; border-radius:8px;
+  }
+  header a.back:hover{ background:rgba(63,167,214,0.1); }
+  header h1{ font-size:16px; font-weight:700; }
+  main{ max-width:760px; margin:0 auto; padding:24px 20px 0; }
+  h2{
+    font-size:18px; font-weight:700; margin:34px 0 10px;
+    padding-top:18px; border-top:1px solid var(--card-border);
+  }
+  main > h2:first-of-type{ border-top:none; padding-top:0; margin-top:20px; }
+  h3{ font-size:15px; font-weight:600; color:var(--cyan); margin:20px 0 6px; }
+  p{ margin:0 0 12px; color:var(--text-dim); }
+  strong{ color:var(--text); font-weight:600; }
+  ul{ margin:0 0 14px 20px; color:var(--text-dim); }
+  li{ margin-bottom:6px; }
+  a{ color:var(--cyan); }
+  .meta{ color:var(--text-faint); font-size:13px; margin-bottom:22px; }
+  .callout{
+    background:var(--bg-elevated); border:1px solid var(--card-border);
+    border-left:3px solid var(--amber); border-radius:10px;
+    padding:14px 16px; margin:0 0 18px;
+  }
+  .callout.warn{ border-left-color:var(--coral); }
+  .callout p:last-child{ margin-bottom:0; }
+  .table-wrap{ overflow-x:auto; margin:0 0 16px; }
+  table{ border-collapse:collapse; width:100%; font-size:13.5px; min-width:460px; }
+  th,td{
+    text-align:left; padding:8px 10px;
+    border-bottom:1px solid var(--card-border); color:var(--text-dim);
+    vertical-align:top;
+  }
+  th{ color:var(--text); font-weight:600; white-space:nowrap; }
+  footer{
+    max-width:760px; margin:36px auto 0; padding:18px 20px 0;
+    border-top:1px solid var(--card-border);
+    color:var(--text-faint); font-size:13px;
+  }
+  @media (max-width:520px){ body{ font-size:14.5px; } main{ padding:20px 16px 0; } }
+</style>
+</head>
+<body>
+
+<header>
+  <!-- No Back link here: standalone, there is nothing to go back to. The app
+       copy keeps one, because index.html does sit beside it. -->
+  <h1>Privacy Policy</h1>
+</header>
+
+<main>
+  <p class="meta">Effective date: 15 September 2026 &middot; Last updated: 15 September 2026</p>
+
+  <p>This policy describes what Theeram collects, why, who it is shared with, and
+  how to remove it. It describes the app as it is actually built.</p>
+
+  <h2>1. What Theeram is</h2>
+  <p>Theeram is a personal flood-risk monitoring app for saved places, built for
+  families in coastal Kerala, India. You save the places you care about — your home,
+  a relative's house, a workplace — and Theeram estimates flood risk at each of them
+  from public rainfall and elevation data, then notifies you when that estimate rises.</p>
+  <div class="callout warn">
+    <p><strong>Theeram is an informational tool, not an official warning service.</strong>
+    The risk estimate is a rainfall-and-elevation proxy. It has no river-stage,
+    reservoir, soil-moisture, drainage or tide input, and it is not a hydrological
+    forecast. Always follow Kerala SDMA, NDMA and local authority guidance in an
+    emergency.</p>
+  </div>
+  <p>Theeram is operated by Harishreyas Vijay.</p>
+
+  <h2>2. Information you provide</h2>
+
+  <h3>Account information</h3>
+  <p>When you create an account you provide an <strong>email address and password</strong>,
+  or you sign in with <strong>Google</strong>, in which case Google provides your email
+  address, name and profile picture to Theeram. Authentication is handled by Firebase
+  Authentication. <strong>Theeram never stores your password</strong>; Firebase manages
+  credentials.</p>
+
+  <h3>Profile information</h3>
+  <p>After first sign-in you are asked for a required <strong>display name</strong>, and
+  optionally a profile picture, <strong>phone number</strong>,
+  <strong>emergency contact name and phone number</strong>, and a
+  <strong>home location</strong>. You may skip every optional field, and the app works
+  without them.</p>
+  <div class="callout">
+    <p><strong>About emergency contacts:</strong> if you enter one, you are providing
+    another person's name and phone number. Please make sure they are content for you
+    to do so. Theeram stores it with your profile and does not contact them; the field
+    exists so the information is to hand in an emergency.</p>
+  </div>
+
+  <h3>Home and saved locations</h3>
+  <p>You add places by <strong>typing a place name</strong>. Theeram converts that text
+  into coordinates using OpenStreetMap's Nominatim service (see section 6) and stores
+  the resolved name, latitude and longitude.</p>
+  <div class="callout">
+    <p><strong>Theeram does not use your device's GPS.</strong> The app requests no
+    location permission, and the code contains no call to any geolocation API. Every
+    coordinate it holds came from a place name you typed.</p>
+  </div>
+
+  <h3>Family circles</h3>
+  <p>You may create a family circle or join one with an invite code. Membership, invite
+  codes and who redeemed them are stored.</p>
+
+  <h2>3. Information collected automatically</h2>
+
+  <h3>Device and notification information</h3>
+  <p>If you allow notifications, Theeram stores a <strong>Firebase Cloud Messaging
+  registration token</strong> for that device, along with the platform and the times
+  the registration was created and updated. The token is what lets Theeram's server
+  send an alert to that specific device. It is stored under a SHA-256 hash of itself,
+  so each device has a stable key.</p>
+  <p>Firebase Cloud Messaging also uses a <strong>Firebase Installation ID</strong>, a
+  pseudonymous identifier Google assigns to the app installation. The Firebase SDKs
+  additionally report delivery and diagnostic telemetry to Google.</p>
+
+  <h3>Derived flood-risk data</h3>
+  <p>For every saved location, Theeram's scheduled monitor stores the rainfall totals
+  it computed, the forecast, the resulting risk level, elevation, terrain type, the
+  alert state, and when it last checked.</p>
+
+  <h3>Alert history</h3>
+  <p>When the risk at a location crosses a threshold, Theeram records an
+  <strong>alert decision</strong>: the location and family it relates to, the kind and
+  level of alert, the time, and — once delivery is attempted — which member accounts it
+  reached and which it did not.</p>
+
+  <h3>Technical information</h3>
+  <p>Like any internet service, the providers listed in section 6 receive your
+  <strong>IP address and basic device/browser information</strong> as a necessary part
+  of serving a request.</p>
+
+  <h3>What Theeram does not collect</h3>
+  <p>Theeram contains <strong>no analytics SDK and no crash-reporting SDK</strong>.
+  There is no Google Analytics for Firebase, no Crashlytics, and no third-party
+  analytics or advertising library. Theeram does not track you across apps or websites,
+  does not build advertising profiles, and does not sell personal information.</p>
+
+  <h2>4. How your information is used</h2>
+  <ul>
+    <li><strong>Authentication</strong> — email and password or Google identity, to sign you in.</li>
+    <li><strong>Flood-risk estimation</strong> — coordinates for each saved location are
+      rounded to roughly a 1.1&nbsp;km grid cell and sent to Open-Meteo to retrieve
+      rainfall and elevation. Your identity is not sent with them.</li>
+    <li><strong>Alerts</strong> — a risk level crossing a threshold generates an alert
+      decision, which is delivered to the registered devices of that family's members.</li>
+    <li><strong>Family sharing</strong> — your display name, picture, safety status and
+      home location are shown to other members of circles you join (see section 5).</li>
+    <li><strong>Account and support</strong> — your email identifies your account.</li>
+  </ul>
+  <p>Theeram does not use your information for advertising or profiling.</p>
+
+  <h2>5. What family members can see</h2>
+  <p>This is worth reading carefully before you join or create a circle.</p>
+  <p>Every member of a family circle can see, for every other member: display name and
+  profile picture, safety status, and <strong>home location, including its
+  coordinates</strong>, if you set one. Members can also see <strong>every saved
+  location in the circle</strong>, including its name and coordinates, whoever added it.</p>
+  <div class="callout">
+    <p><strong>Alerts go to every member of the circle.</strong> When a saved place
+    crosses a risk threshold, all members receive the notification — not only the
+    person who added that place.</p>
+  </div>
+  <p>Your <strong>phone number and emergency contact are not shared</strong> with other
+  members. They are readable only by you.</p>
+  <p>Family administrators can additionally remove members, which deletes those members'
+  saved locations in that circle, and can delete the circle. If you leave a circle, your
+  membership record and the locations you added to it are deleted.</p>
+
+  <h2>6. Third-party services</h2>
+  <p>Theeram is a small app built on public services. Each of these receives data as
+  described. Theeram does not control their independent practices — please see their own
+  privacy policies.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Service</th><th>Provider</th><th>What it receives</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Firebase Authentication</td><td>Google</td><td>Email, password or Google credential, IP, device info</td><td>Sign-in</td></tr>
+      <tr><td>Cloud Firestore</td><td>Google</td><td>All stored data in sections 2–3</td><td>Storage</td></tr>
+      <tr><td>Firebase Cloud Messaging</td><td>Google</td><td>Device token, notification content</td><td>Alerts</td></tr>
+      <tr><td>Firebase Installations</td><td>Google</td><td>Installation ID, app and SDK version</td><td>Required by messaging</td></tr>
+      <tr><td>Firebase SDK hosting</td><td>Google (gstatic)</td><td>IP, device info</td><td>Loads the app's code</td></tr>
+      <tr><td>Google Fonts</td><td>Google</td><td>IP, device info</td><td>Typography</td></tr>
+      <tr><td>Open-Meteo</td><td>Open-Meteo</td><td>Grid-rounded coordinates (~1.1&nbsp;km)</td><td>Rainfall and elevation</td></tr>
+      <tr><td>Nominatim</td><td>OpenStreetMap Foundation</td><td>The place text you type, IP</td><td>Converts a place name to coordinates</td></tr>
+      <tr><td>Map tiles</td><td>CARTO (OpenStreetMap data)</td><td>IP, the map area you view</td><td>Displays the map</td></tr>
+      <tr><td>unpkg, jsDelivr</td><td>Cloudflare/Fastly CDNs</td><td>IP, device info</td><td>Map and QR-code libraries</td></tr>
+      <tr><td>GitHub Actions</td><td>GitHub (Microsoft)</td><td>Runs the scheduled monitor</td><td>Scheduling</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p><strong>Location data sent to Open-Meteo is coarse and anonymous.</strong>
+  Coordinates are rounded to about 1.1&nbsp;km and sent without any identifier, so the
+  request cannot be tied to you by Open-Meteo. The place name you type is, by contrast,
+  sent to Nominatim exactly as you typed it.</p>
+  <p>These providers operate globally. Your information <strong>may be processed and
+  stored outside India</strong>, including in the United States and the European Union,
+  depending on the provider's infrastructure. Firebase services for this project are
+  configured in the <code>asia-south1</code> (Mumbai) region where the service supports
+  regional selection, but this is not a guarantee that no data leaves India.</p>
+
+  <h2>7. Notifications</h2>
+  <p>Alerts are delivered through Firebase Cloud Messaging. A notification contains the
+  <strong>name of the affected saved place</strong> and the risk level — for example,
+  "Severe flood risk — Kochi".</p>
+  <div class="callout">
+    <p>The Android notification channel is configured as <strong>publicly visible on the
+    lock screen</strong>, so an alert is readable without unlocking the device. This is
+    deliberate: an alert that a locked screen hides is of little use at 3am. It does mean
+    that <strong>anyone holding your phone can see the name of an affected saved
+    place</strong>. You can change this in Android's notification settings for Theeram
+    if you prefer.</p>
+  </div>
+  <p>The data attached to a notification is limited to identifiers — family, location and
+  alert ids. <strong>Coordinates, names, phone numbers and emergency contacts are never
+  included in a notification payload.</strong></p>
+  <p>You can turn notifications off at any time in your device settings. Doing so stops
+  alerts reaching that device.</p>
+
+  <h2>8. Data retention and deletion</h2>
+
+  <h3>Deleting your account</h3>
+  <p><strong>Account → Delete account</strong>, inside the app. You are asked to confirm
+  and to re-enter your password. This cannot be undone.</p>
+
+  <h3>Deleted immediately</h3>
+  <ul>
+    <li>your Firebase Authentication account</li>
+    <li>your profile, including phone number, emergency contact and home location</li>
+    <li><strong>every device registration and notification token</strong></li>
+    <li>your membership of every family circle</li>
+    <li>every saved location you added</li>
+    <li>a family circle in which you were the only member</li>
+  </ul>
+  <p>If you are the sole administrator of a circle that still has other members, the
+  circle is <strong>handed to its longest-serving remaining member</strong> rather than
+  deleted, so that other people do not lose their saved places.</p>
+
+  <h3>Cleaned up shortly afterwards</h3>
+  <p>Some records are held in collections that no app can write to, for security reasons.
+  After your account is deleted, a scheduled job removes your identifier from them.
+  <strong>This is not instantaneous.</strong> The job runs weekly, so residual references
+  may persist for <strong>up to about seven days</strong> after deletion. What remains in
+  that window is your <strong>account identifier only</strong> — an opaque string — on
+  records that contain no name, location or contact information.</p>
+  <p>Specifically: your identifier in alert-delivery records, and in invite codes you
+  created or redeemed. The invite code itself is kept marked as used, because un-marking
+  it would turn a dead invitation into a working one for a circle you have left.</p>
+
+  <h3>What is not deleted</h3>
+  <ul>
+    <li><strong>Saved locations added by other members</strong> of a circle you belonged
+      to, and <strong>alert history for those locations</strong>. These belong to the
+      other members.</li>
+    <li>Aggregate, non-identifying operational records such as the monitor heartbeat.</li>
+    <li>Backups or logs held by the third parties in section 6 under their own retention
+      policies.</li>
+  </ul>
+
+  <h3>Retention while your account is active</h3>
+  <p>Theeram keeps your information for as long as your account exists. Alert decisions
+  are retained as history; they are not automatically expired.</p>
+
+  <h2>9. Security</h2>
+  <ul>
+    <li>All traffic uses HTTPS.</li>
+    <li>Passwords are handled entirely by Firebase Authentication and never reach
+      Theeram's own storage.</li>
+    <li>Firestore security rules restrict access: your profile is readable only by you;
+      circle data is readable only by confirmed members; alert-delivery records are
+      readable by no client at all.</li>
+    <li>Notification tokens are stored under a hash and are never written to logs.</li>
+    <li>The scheduled server components authenticate with short-lived federated
+      credentials. <strong>No long-lived service-account key exists.</strong></li>
+  </ul>
+  <p>No system is perfectly secure, and Theeram cannot guarantee absolute security.</p>
+
+  <h2>10. Children's privacy</h2>
+  <p>Theeram is not directed at children under 13, and Theeram does not knowingly collect
+  personal information from them. If you believe a child has provided information, contact
+  harishreyasv@gmail.com and it will be deleted.</p>
+
+  <h2>11. Your rights and choices</h2>
+  <p>Within the app you can view and edit your profile (including removing your phone
+  number, emergency contact and home location), add or remove saved locations, leave a
+  family circle, turn off notifications in device settings, and delete your account and
+  associated data (section 8).</p>
+  <p>Depending on where you live, you may have additional rights — access, correction,
+  deletion, portability, or objection to certain processing — under laws such as India's
+  Digital Personal Data Protection Act, 2023 or the EU/UK GDPR. To exercise them, contact
+  harishreyasv@gmail.com.</p>
+  <p>This policy does not claim that Theeram is certified as compliant with any particular
+  data-protection regime.</p>
+
+  <h2>12. Changes to this policy</h2>
+  <p>This policy may be updated as Theeram changes. The effective date at the top will
+  change, and material changes will be signalled in the app. Continuing to use Theeram
+  after an update means you accept the revised policy.</p>
+
+  <h2>13. Contact</h2>
+  <p>Questions, requests or complaints:</p>
+  <p><strong>Harishreyas Vijay</strong><br>
+  Email: harishreyasv@gmail.com<br>
+  Address: Kumar Bhavan, Nellikala, Elanthoor, Pathanamthitta, Kerala 689643, India</p>
+</main>
+
+<footer>
+  Theeram is an informational tool built on public weather data. It is not an official
+  flood warning service. In an emergency, follow Kerala SDMA, NDMA and local authority
+  instructions.
+</footer>
+
+</body>
+</html>
