@@ -16,8 +16,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing. Every value comes from Gradle properties, normally
+    // ~/.gradle/gradle.properties outside the repository; nothing secret is in
+    // this file. When any value is missing the release variant is simply left
+    // unsigned, so debug builds and machines without the key are unaffected.
+    def releaseSigningProps = ['THEERAM_UPLOAD_STORE_FILE', 'THEERAM_UPLOAD_STORE_PASSWORD',
+                               'THEERAM_UPLOAD_KEY_ALIAS', 'THEERAM_UPLOAD_KEY_PASSWORD']
+    def hasReleaseSigning = releaseSigningProps.every { project.hasProperty(it) }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(project.property('THEERAM_UPLOAD_STORE_FILE'))
+                storePassword project.property('THEERAM_UPLOAD_STORE_PASSWORD')
+                keyAlias project.property('THEERAM_UPLOAD_KEY_ALIAS')
+                keyPassword project.property('THEERAM_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
