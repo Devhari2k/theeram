@@ -81,13 +81,17 @@ async function ensureInitialized() {
  *   - forcePrompt is iOS-only. `forceAccountChoice` therefore changes nothing
  *     on Android today; it is carried so the deletion path already asks for
  *     the stronger behaviour if and when iOS ships.
+ *
+ * `scopes` is deliberately absent. Passing it makes GoogleProvider.java reject
+ * the call ("You CANNOT use scopes without modifying the main activity")
+ * unless MainActivity implements ModifiedMainActivityForSocialLoginPlugin.
+ * Firebase needs only the ID token, which the default scopes already cover.
  */
 async function nativeIdToken({ forceAccountChoice = false } = {}) {
   const plugin = await ensureInitialized();
   const login = await plugin.login({
     provider: 'google',
     options: {
-      scopes: ['profile', 'email'],
       style: 'standard',
       autoSelectEnabled: false,
       filterByAuthorizedAccounts: false,

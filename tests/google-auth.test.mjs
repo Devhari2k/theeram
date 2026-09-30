@@ -287,6 +287,14 @@ describe('Google account deletion is possible and still properly confirmed', () 
     assert.match(GLUE, /filterByAuthorizedAccounts: false/);
   });
 
+  test('the native login passes no scopes, which the stock MainActivity cannot serve', () => {
+    // GoogleProvider.java rejects any login carrying `scopes` unless
+    // MainActivity implements ModifiedMainActivityForSocialLoginPlugin. Theeram
+    // keeps the stock BridgeActivity, and Firebase needs only the ID token.
+    assert.ok(!/scopes\s*:/.test(GLUE),
+      'google-auth.js must not pass scopes to SocialLogin.login()');
+  });
+
   test('deletion asks for the stronger iOS behaviour too', () => {
     // forcePrompt is iOS-only, so this changes nothing on Android. It is
     // asserted so the deletion path does not lose it if iOS ships later.
